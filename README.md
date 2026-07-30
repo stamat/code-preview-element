@@ -29,12 +29,34 @@ page loading the real stylesheet.
 | `js` | whitespace-separated script urls for the frame |
 | `head` | extra head html, replacing the default `body{margin:0;padding:1rem}` |
 | `theme-attribute` | attribute the host page's `[data-theme]` is mirrored onto, inside the frame |
+| `viewport-width` | render at this css width and scale it down to fit |
 | `no-edit` | render the preview, leave the code read-only |
 | `reload` | always rebuild the frame on edit, never patch it |
 
 Relative urls in `css`/`js` resolve against the **host page** — that is what a
 `srcdoc` document inherits as its base url — so a page two directories down needs
 `../../dist/my-library.css`, exactly as it would in its own markup.
+
+## Responsive samples
+
+A preview frame in a text column is a ~700px viewport, and media queries inside it
+read that width honestly — so a responsive sample only ever demonstrates its narrow
+layout. `viewport-width` fixes that by giving the frame a real width and scaling the
+rendered result down to fit:
+
+```html
+<code-preview css="dist/my-library.css" viewport-width="1024">
+```
+
+CSS `zoom` is not an alternative — it shrinks the rendering without changing the
+viewport the media queries are asked about. This does change it: the frame genuinely
+is 1024px wide, then `transform: scale()` makes it fit, and a `ResizeObserver`
+recomputes the factor when the column resizes. A container already that wide is left
+alone rather than scaled up.
+
+Keep the emulated width modest — 1024 rather than 1600. Everything in the frame
+shrinks by the same factor, text included, and a preview nobody can read is not a
+better preview.
 
 ## Wiring it up
 

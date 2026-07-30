@@ -31,3 +31,19 @@ body {
 
 .card h3 { margin: 0 0 0.5rem; }
 .card p { margin: 0; }
+
+/* Breakpoints, so `viewport-width` has something to prove: these only fire when the
+   frame's own viewport is wide, which is exactly what a text column denies it. */
+.cols {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 600px) {
+  .cols { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 900px) {
+  .cols { grid-template-columns: repeat(3, 1fr); }
+}

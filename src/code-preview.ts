@@ -34,6 +34,8 @@
 //   js               whitespace-separated script urls for the frame
 //   head             extra head html, replacing the default body-padding style
 //   theme-attribute  attribute the host page's [data-theme] is mirrored onto
+//   viewport-width   render at this css width and scale it down to fit, so the
+//                    sample's wider media queries apply (see scaleToFit)
 //   no-edit          render the preview, leave the code read-only
 //   reload           always rebuild the frame on edit, never patch it
 import { CodeJar } from 'codejar'
@@ -80,6 +82,22 @@ const isDocument = (src: string): boolean => /^\s*<(!doctype|html)\b/i.test(src)
 // misrepresent the library outright, and an explicit `<body>` stops a sample that
 // happens to open with `<title>`, a comment or whitespace from landing in head.
 //
+// How much to shrink an emulated viewport to fit the space actually available.
+//
+// A preview frame in a docs column is a ~700px viewport, and media queries inside it
+// read that width honestly — so a responsive sample only ever shows its narrow
+// layout. Giving the frame a real width of, say, 1024px is what makes the desktop
+// breakpoints apply; scaling it down is what makes it fit on screen. CSS `zoom` is
+// not an alternative: it shrinks the rendering without changing the viewport the
+// media queries are asked about.
+//
+// 1 means don't: no emulated width, nothing measured yet, or a container already
+// wide enough — scaling *up* would only blur a sample that was already correct.
+export function scaleToFit(available: number, emulated: number): number {
+  if (!(available > 0) || !(emulated > 0) || available >= emulated) return 1
+  return available / emulated
+}
+
 // Exported for tests: it is the pure half of the element, and both of the mistakes
 // above are silent rather than loud.
 export function buildSrcdoc(
@@ -98,6 +116,7 @@ export function buildSrcdoc(
 
 export class CodePreview extends HTMLElement {
   private frame?: HTMLIFrameElement
+  private viewport?: HTMLElement
   private code?: HTMLElement
   private language = 'html'
   private resize?: ResizeObserver
@@ -122,8 +141,17 @@ export class CodePreview extends HTMLElement {
     // has no height until it loads, which is what the css min-height covers.
     frame.loading = 'lazy'
     frame.addEventListener('load', () => this.onFrameLoad())
-    this.prepend(frame)
+
+    // The frame lives in a wrapper rather than directly in the element, because
+    // `viewport-width` scales the frame and something unscaled has to own the
+    // border, the corner radius and the height cap. It is also what the code block
+    // below sits against, so the two still read as one unit.
+    const viewport = document.createElement('div')
+    viewport.className = 'code-preview-viewport'
+    viewport.appendChild(frame)
+    this.prepend(viewport)
     this.frame = frame
+    this.viewport = viewport
 
     this.render(this.source)
 
@@ -194,11 +222,13 @@ export class CodePreview extends HTMLElement {
     this.syncTheme()
     // An iframe has no intrinsic height, so the parent measures the frame's own
     // document and sizes it. Reconnected on every load: a rebuild means a new
-    // documentElement to watch.
+    // documentElement to watch. The wrapper is watched too — its width is what an
+    // emulated viewport is scaled against, so a window resize has to refit.
     this.resize?.disconnect()
     if (typeof ResizeObserver !== 'undefined') {
       this.resize = new ResizeObserver(() => this.fit())
       this.resize.observe(doc.documentElement)
+      if (this.viewport) this.resize.observe(this.viewport)
     }
     // srcdoc inherits the parent's origin, so the page can hear the sample's own
     // errors. Without this a broken edit just looks like a preview that quietly
@@ -217,17 +247,33 @@ export class CodePreview extends HTMLElement {
   // scrollHeight covers content that spills out of that box.
   private fit(): void {
     const frame = this.frame
+    const viewport = this.viewport
     const doc = frame?.contentDocument
-    if (!doc || !frame) return
-    const content = Math.max(doc.documentElement.getBoundingClientRect().height, doc.body?.scrollHeight ?? 0)
-    // The css height is the *border* box wherever box-sizing is reset, which it is
-    // in most stylesheets, while
-    // what was just measured is the viewport inside it. Without the difference added
-    // back, every preview is short by its own border and shows a scrollbar with two
-    // pixels of travel. Measured rather than hardcoded, so it survives whatever
-    // border or padding the stylesheet puts on the frame.
-    const chrome = frame.offsetHeight - frame.clientHeight
-    frame.style.height = `${Math.ceil(content) + chrome}px`
+    if (!doc || !frame || !viewport) return
+
+    const emulated = Number(this.getAttribute('viewport-width')) || 0
+    const scale = scaleToFit(viewport.clientWidth, emulated)
+    // The frame is given its emulated width in real pixels — that is the whole point,
+    // it is what the media queries inside will read — and scaled from its top-left
+    // corner so the shrunk result lines up with the box it sits in.
+    frame.style.width = scale < 1 ? `${emulated}px` : ''
+    frame.style.transform = scale < 1 ? `scale(${scale})` : ''
+
+    // The frame gets the sample's full unscaled height, so nothing scrolls inside it;
+    // the wrapper gets the scaled height, and caps it.
+    const content = Math.ceil(Math.max(doc.documentElement.getBoundingClientRect().height, doc.body?.scrollHeight ?? 0))
+    // A wrapper height is the *border* box wherever box-sizing is reset, which is most
+    // stylesheets, while what was just measured is the space inside it. Without the
+    // difference added back every preview is short by its own border and shows a
+    // scrollbar with two pixels of travel. Measured rather than hardcoded, so it
+    // survives whatever border or padding the stylesheet puts on the wrapper.
+    const chrome = viewport.offsetHeight - viewport.clientHeight
+    const height = `${Math.ceil(content * scale) + chrome}px`
+
+    frame.style.height = `${content}px`
+    // Writing an unchanged height would be a no-op, but the wrapper is observed for
+    // width changes, and an unchanged write still costs a layout pass per demo.
+    if (viewport.style.height !== height) viewport.style.height = height
   }
 
   private syncTheme(): void {

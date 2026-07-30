@@ -12,27 +12,42 @@ code-preview {
   margin: 1.75rem 0;
 }
 
-/* max-height is load-bearing, not taste: the element sizes the frame from its own
+/* The wrapper owns the border, the radius and the height cap, because the frame
+   inside it may be scaled — `viewport-width` renders the sample at a real css width
+   and shrinks it, and a scaled border is a hairline.
+
+   max-height is load-bearing, not taste: the element sizes the frame from its own
    content height, so a sample measured in viewport units would grow the frame,
-   which grows the viewport, which grows the sample. The cap makes it converge.
-   min-height covers the other end — the frame loads lazily and has no height at
-   all until it does. aspect-ratio is unset because a host stylesheet that gives
-   every iframe a 16/9 ratio (right for video, wrong here) would otherwise win. */
-code-preview .code-preview-frame {
+   which grows the viewport, which grows the sample. The cap makes it converge, and
+   scrolls whatever is past it. min-height covers the other end — the frame loads
+   lazily and has no height at all until it does. */
+code-preview .code-preview-viewport {
   display: block;
   width: 100%;
-  aspect-ratio: auto;
   min-height: 4rem;
   max-height: 70vh;
   margin: 0;
+  overflow: hidden auto;
   border: 1px solid var(--border, #d8d8d8);
   border-radius: var(--radius, 6px) var(--radius, 6px) 0 0;
   background: var(--bg, #fff);
 }
 
-/* The frame and the code it renders read as one unit: no gap, no rounding where
+/* aspect-ratio is unset because a host stylesheet that gives every iframe a 16/9
+   ratio (right for video, wrong here) would otherwise win. The transform origin is
+   what makes a scaled frame line up with the wrapper's top-left corner. */
+code-preview .code-preview-frame {
+  display: block;
+  width: 100%;
+  aspect-ratio: auto;
+  margin: 0;
+  border: 0;
+  transform-origin: 0 0;
+}
+
+/* The preview and the code it renders read as one unit: no gap, no rounding where
    they meet. `.code-wrap` is matched too because copy-button scripts commonly wrap
-   every `pre` in one, which changes what sits next to the frame once they run. */
+   every `pre` in one, which changes what sits next to the preview once they run. */
 code-preview > :is(pre, .code-wrap) {
   margin-top: 0;
 }

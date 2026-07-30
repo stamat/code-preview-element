@@ -33,6 +33,7 @@ const bundle = async (format) => (await build({
 })).outputFiles[0].text
 
 let buildSrcdoc
+let scaleToFit
 let iife
 
 before(async () => {
@@ -42,8 +43,20 @@ before(async () => {
   globalThis.HTMLElement = class {}
   globalThis.customElements = { get: () => undefined, define: () => {} }
   const esm = await bundle('esm')
-  ;({ buildSrcdoc } = await import(`data:text/javascript;base64,${Buffer.from(esm).toString('base64')}`))
+  ;({ buildSrcdoc, scaleToFit } = await import(`data:text/javascript;base64,${Buffer.from(esm).toString('base64')}`))
   iife = await bundle('iife')
+})
+
+test('an emulated viewport is scaled down to the space available, never up', () => {
+  assert.equal(scaleToFit(512, 1024), 0.5)
+  // Already wide enough, or wider: leave it alone rather than blurring a sample that
+  // was rendering correctly.
+  assert.equal(scaleToFit(1024, 1024), 1)
+  assert.equal(scaleToFit(1600, 1024), 1)
+  // No emulated width asked for, and nothing measured yet (a lazy frame before it
+  // has been laid out) both mean don't scale.
+  assert.equal(scaleToFit(700, 0), 1)
+  assert.equal(scaleToFit(0, 1024), 1)
 })
 
 test('the frame document is a real document, with the assets in it', () => {
@@ -91,10 +104,12 @@ test('the element renders through srcdoc, not into about:blank', () => {
   page.window.document.head.appendChild(script)
 
   const element = page.window.document.querySelector('code-preview')
+  const viewport = element.querySelector('.code-preview-viewport')
   const frame = element.querySelector('iframe')
 
   assert.ok(frame, 'the element did not upgrade: no iframe')
-  assert.equal(frame.previousSibling, null, 'the frame belongs in front of the code it renders')
+  assert.equal(frame.parentElement, viewport, 'the frame belongs in the wrapper that owns the border and the height cap')
+  assert.equal(viewport, element.firstElementChild, 'the preview belongs in front of the code it renders')
   assert.match(frame.getAttribute('srcdoc') ?? '', /<link rel="stylesheet" href="\.\.\/\.\.\/dist\/lib\.css">/)
   assert.match(frame.getAttribute('srcdoc') ?? '', /<body><button class="btn">Hi<\/button><\/body>/)
   assert.equal(frame.contentDocument.body.innerHTML, '', 'the sample was written into about:blank')
