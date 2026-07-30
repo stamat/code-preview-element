@@ -94,8 +94,9 @@ const isDocument = (src: string): boolean => /^\s*<(!doctype|html)\b/i.test(src)
 // not an alternative: it shrinks the rendering without changing the viewport the
 // media queries are asked about.
 //
-// 1 means don't: no emulated width, nothing measured yet, or a container already
-// wide enough — scaling *up* would only blur a sample that was already correct.
+// 1 means don't scale: no emulated width, nothing measured yet, or a container
+// already wide enough — including the narrower-than-available case, where the point
+// is a phone-sized viewport at full fidelity, not a magnified one.
 export function scaleToFit(available: number, emulated: number): number {
   if (!(available > 0) || !(emulated > 0) || available >= emulated) return 1
   return available / emulated
@@ -310,10 +311,11 @@ export class CodePreview extends HTMLElement {
 
     const emulated = Number(this.getAttribute('viewport-width')) || 0
     const scale = scaleToFit(viewport.clientWidth, emulated)
-    // The frame is given its emulated width in real pixels — that is the whole point,
-    // it is what the media queries inside will read — and scaled from its top-left
-    // corner so the shrunk result lines up with the box it sits in.
-    frame.style.width = scale < 1 ? `${emulated}px` : ''
+    // Two separate decisions, and conflating them broke narrow emulation: the width
+    // is always applied, because that is the whole point — it is what the media
+    // queries inside will read — while scaling only happens when that width does not
+    // fit. Asking for 375px in a 700px column is a phone preview, not a no-op.
+    frame.style.width = emulated ? `${emulated}px` : ''
     frame.style.transform = scale < 1 ? `scale(${scale})` : ''
 
     // The frame gets the sample's full unscaled height, so nothing scrolls inside it;

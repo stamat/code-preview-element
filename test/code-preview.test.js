@@ -146,6 +146,22 @@ test('the width switcher drives the viewport-width attribute', () => {
   assert.equal(buttons[0].getAttribute('aria-pressed'), 'true')
 })
 
+// jsdom has no layout, so the wrapper measures 0 wide and nothing ever scales here.
+// The width is still applied, which is the half that broke once: a viewport narrower
+// than the column is a phone preview, not a no-op.
+test('an emulated width is applied whether or not it needs scaling', () => {
+  const element = mount('viewport-widths="375 1024" no-edit')
+  const frame = element.querySelector('iframe')
+  const [fit, phone] = element.querySelectorAll('.code-preview-width')
+
+  phone.click()
+  assert.equal(frame.style.width, '375px')
+  assert.equal(frame.style.transform, '', 'nothing to scale when the width already fits')
+
+  fit.click()
+  assert.equal(frame.style.width, '', 'Fit hands the frame back its natural width')
+})
+
 test('an initial viewport-width is what the switcher shows as pressed', () => {
   const element = mount('viewport-width="768" viewport-widths="375 768" no-edit')
   const pressed = element.querySelectorAll('.code-preview-width[aria-pressed="true"]')
