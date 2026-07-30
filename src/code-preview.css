@@ -1,0 +1,68 @@
+/* <code-preview> — the styles the element needs to work, and as little taste as
+   possible on top. Every colour is a custom property with a fallback, so a host
+   page that already defines --border, --bg, --accent, --fg-muted or --font-mono
+   gets its own look for free.
+
+   Load it wherever the element is used:
+     <link rel="stylesheet" href="node_modules/code-preview-element/src/code-preview.css">
+*/
+
+code-preview {
+  display: block;
+  margin: 1.75rem 0;
+}
+
+/* max-height is load-bearing, not taste: the element sizes the frame from its own
+   content height, so a sample measured in viewport units would grow the frame,
+   which grows the viewport, which grows the sample. The cap makes it converge.
+   min-height covers the other end — the frame loads lazily and has no height at
+   all until it does. aspect-ratio is unset because a host stylesheet that gives
+   every iframe a 16/9 ratio (right for video, wrong here) would otherwise win. */
+code-preview .code-preview-frame {
+  display: block;
+  width: 100%;
+  aspect-ratio: auto;
+  min-height: 4rem;
+  max-height: 70vh;
+  margin: 0;
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: var(--radius, 6px) var(--radius, 6px) 0 0;
+  background: var(--bg, #fff);
+}
+
+/* The frame and the code it renders read as one unit: no gap, no rounding where
+   they meet. `.code-wrap` is matched too because copy-button scripts commonly wrap
+   every `pre` in one, which changes what sits next to the frame once they run. */
+code-preview > :is(pre, .code-wrap) {
+  margin-top: 0;
+}
+
+code-preview > pre,
+code-preview > .code-wrap > pre {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* CodeJar sets `outline: none` inline on the block it takes over, so the focus ring
+   cannot live on the block itself. */
+code-preview.is-editable > :is(pre, .code-wrap) > pre,
+code-preview.is-editable > pre {
+  cursor: text;
+}
+
+code-preview:focus-within > :is(pre, .code-wrap) > pre,
+code-preview:focus-within > pre {
+  box-shadow: 0 0 0 2px var(--accent, #0969da);
+}
+
+/* A sample whose script threw. The message comes from the frame's own error event,
+   so it names the line rather than just saying something broke. */
+code-preview[data-error]::after {
+  content: "⚠ " attr(data-error);
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border, #d8d8d8);
+  border-top: 0;
+  font: 0.875rem/1.4 var(--font-mono, ui-monospace, monospace);
+  color: var(--fg-muted, #656d76);
+}

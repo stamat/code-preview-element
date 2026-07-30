@@ -1,0 +1,33 @@
+/* Loaded inside a preview frame, not by the example page — the stand-in for whatever
+   library a real docs site is demonstrating. It reads [data-theme] on the root, which
+   is what `theme-attribute="data-theme"` mirrors in from the host page. */
+:root {
+  --card-border: #d0d7de;
+  --card-bg: #f6f8fa;
+  --card-fg: #1f2328;
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --card-border: #30363d;
+  --card-bg: #161b22;
+  --card-fg: #e6edf3;
+
+  color-scheme: dark;
+}
+
+body {
+  font: 1rem/1.5 system-ui, sans-serif;
+  color: var(--card-fg);
+}
+
+.card {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--card-bg);
+}
+
+.card h3 { margin: 0 0 0.5rem; }
+.card p { margin: 0; }

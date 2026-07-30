@@ -1,0 +1,262 @@
+// <code-preview> — a code block that renders itself.
+//
+// Wraps a highlighted `<pre><code>` in a live preview: an iframe above the code,
+// the code editable, edits applied as you type. The sample stays the only source
+// of truth, so the preview and the code it documents cannot drift.
+//
+// An iframe rather than markup inlined into the page, because a documentation page
+// cannot host a sample of a CSS library safely. Tag-level rules for `html`, `body`,
+// `h1`–`h6` and `* { box-sizing }` would restyle the docs around the sample, and
+// `@layer base` rules would lose to the theme, so the preview would be wrong in
+// both directions at once. Scoping the stylesheet under a wrapper selector is no
+// better: `:root` goes with it and the custom properties die. The frame is the
+// isolation, and for a CSS library it is also the honest demo — a real page loading
+// the real stylesheet.
+//
+// Light DOM on purpose: the code block keeps the host page's `.hljs` colors and
+// prose styles, which a shadow root would cut it off from.
+//
+// Nothing here knows about any particular site, generator or markdown flavour —
+// every input arrives as an attribute, so wiring is whatever fills them in. See the
+// README for the two shapes that has taken: writing the element by hand, or having
+// a build step wrap already-highlighted fences in it.
+//
+//   <code-preview css="dist/lib.css" theme-attribute="data-color-scheme">
+//     <pre><code class="hljs language-html">…</code></pre>
+//   </code-preview>
+//
+// Relative urls in `css`/`js` resolve against the *host page*, because that is what
+// a srcdoc document inherits as its base url — so a page two directories down needs
+// `../../dist/lib.css`, exactly as it would in its own markup.
+//
+// Attributes:
+//   css              whitespace-separated stylesheet urls for the frame
+//   js               whitespace-separated script urls for the frame
+//   head             extra head html, replacing the default body-padding style
+//   theme-attribute  attribute the host page's [data-theme] is mirrored onto
+//   no-edit          render the preview, leave the code read-only
+//   reload           always rebuild the frame on edit, never patch it
+import { CodeJar } from 'codejar'
+import hljs from 'highlight.js/lib/core'
+import xml from 'highlight.js/lib/languages/xml'
+import css from 'highlight.js/lib/languages/css'
+import javascript from 'highlight.js/lib/languages/javascript'
+
+// highlight.js's own alias names, and the same ones static site generators register
+// when they highlight fences at build time. Re-highlighting has to agree with that
+// build-time output or the block visibly reshuffles the first time it is focused,
+// which is also why the dependency is pinned to hljs 11. css and javascript are here
+// even for an html-only editor because xml sub-highlights `<style>` and `<script>`
+// bodies — but only if it can find them.
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('html', xml)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('js', javascript)
+
+// ponytail: html only. Editing css or js means splitting a demo across three
+// fences and adding a tab strip; nothing in the docs wants that yet.
+const EDITABLE = /^(html|xml)$/
+
+const DEFAULT_HEAD = '<style>body{margin:0;padding:1rem}</style>'
+
+// A patch lands in the frame that is already loaded; a rebuild reloads it, so it
+// gets a longer leash — one reload per keystroke is miserable, and half-typed
+// markup is usually broken anyway.
+const PATCH_DELAY = 250
+const RELOAD_DELAY = 600
+
+const list = (value: string | null): string[] => (value ?? '').split(/\s+/).filter(Boolean)
+
+const attr = (value: string): string => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+
+// A sample that brings its own `<html>` owns its head: pass it through untouched
+// rather than injecting a second one around it.
+const isDocument = (src: string): boolean => /^\s*<(!doctype|html)\b/i.test(src)
+
+// The document the frame gets. Written out in full rather than leaning on the
+// parser to hoist a leading `<link>` into head, for two reasons: `<!DOCTYPE html>`
+// is what keeps the frame out of quirks mode, where the old box model would
+// misrepresent the library outright, and an explicit `<body>` stops a sample that
+// happens to open with `<title>`, a comment or whitespace from landing in head.
+//
+// Exported for tests: it is the pure half of the element, and both of the mistakes
+// above are silent rather than loud.
+export function buildSrcdoc(
+  html: string,
+  opts: { css?: string[], js?: string[], head?: string | null } = {}
+): string {
+  if (isDocument(html)) return html
+  const styles = (opts.css ?? []).map((href) => `<link rel="stylesheet" href="${attr(href)}">`).join('')
+  // Scripts last, so a library's stylesheet is in place before its js measures
+  // anything.
+  const scripts = (opts.js ?? []).map((src) => `<script src="${attr(src)}"></script>`).join('')
+  return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+    styles + (opts.head ?? DEFAULT_HEAD) + scripts +
+    '</head><body>' + html + '</body></html>'
+}
+
+export class CodePreview extends HTMLElement {
+  private frame?: HTMLIFrameElement
+  private code?: HTMLElement
+  private language = 'html'
+  private resize?: ResizeObserver
+  private theme?: MutationObserver
+  private timer?: ReturnType<typeof setTimeout>
+  private jar?: ReturnType<typeof CodeJar>
+  // Has the frame loaded a document of ours? Nothing may be patched before it has.
+  private loaded = false
+
+  connectedCallback(): void {
+    // Moving the element in the dom re-runs this; build once.
+    if (this.frame) return
+    const code = this.querySelector<HTMLElement>('pre code, pre')
+    if (!code) return
+    this.code = code
+    this.language = /language-([\w-]+)/.exec(code.className)?.[1]?.toLowerCase() ?? 'html'
+
+    const frame = document.createElement('iframe')
+    frame.className = 'code-preview-frame'
+    frame.title = 'Rendered preview'
+    // A demo far down a long page costs nothing until it is scrolled to. The frame
+    // has no height until it loads, which is what the css min-height covers.
+    frame.loading = 'lazy'
+    frame.addEventListener('load', () => this.onFrameLoad())
+    this.prepend(frame)
+    this.frame = frame
+
+    this.render(this.source)
+
+    // Dark mode: the host page's [data-theme] is copied into the frame, under
+    // whatever attribute name the sample's stylesheet reads (`theme-attribute`).
+    // One observer per element rather than a shared one, so the element needs no
+    // page-level setup to be dropped in.
+    this.theme = new MutationObserver(() => this.syncTheme())
+    this.theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+
+    if (!this.hasAttribute('no-edit') && EDITABLE.test(this.language)) this.attachEditor()
+  }
+
+  disconnectedCallback(): void {
+    this.resize?.disconnect()
+    this.theme?.disconnect()
+    if (this.timer) clearTimeout(this.timer)
+    this.jar?.destroy()
+    this.jar = undefined
+    this.frame = undefined
+  }
+
+  get source(): string {
+    return this.code?.textContent ?? ''
+  }
+
+  private get assets(): { css: string[], js: string[], head: string | null } {
+    return {
+      css: list(this.getAttribute('css')),
+      js: list(this.getAttribute('js')),
+      head: this.getAttribute('head')
+    }
+  }
+
+  // Patching the loaded document keeps the frame's stylesheets and scroll position,
+  // so a keystroke costs nothing. It is wrong in two cases, which are the same trap
+  // from both ends: `innerHTML` never executes scripts it inserts, and a script that
+  // already ran — a library from `js`, say — does not re-run against the markup
+  // replacing whatever it initialised. Either one means a real reload.
+  private render(src: string): void {
+    const frame = this.frame
+    if (!frame) return
+    delete this.dataset.error
+    // `loaded` is the guard that matters, and the presence of `doc.body` is not:
+    // a fresh iframe already holds an about:blank document with a body, so
+    // patching before the first real load writes the sample into a blank page —
+    // no stylesheet, no load event, and therefore no sizing either.
+    const patchable = this.loaded && !isDocument(src) && !this.assets.js.length && !this.hasAttribute('reload')
+    if (patchable) {
+      this.frame!.contentDocument!.body.innerHTML = src
+      this.fit()
+    } else {
+      this.loaded = false
+      frame.srcdoc = buildSrcdoc(src, this.assets)
+    }
+  }
+
+  private schedule(src: string): void {
+    if (this.timer) clearTimeout(this.timer)
+    const reloads = this.assets.js.length > 0 || this.hasAttribute('reload')
+    this.timer = setTimeout(() => this.render(src), reloads ? RELOAD_DELAY : PATCH_DELAY)
+  }
+
+  private onFrameLoad(): void {
+    const doc = this.frame?.contentDocument
+    if (!doc) return
+    this.loaded = true
+    this.syncTheme()
+    // An iframe has no intrinsic height, so the parent measures the frame's own
+    // document and sizes it. Reconnected on every load: a rebuild means a new
+    // documentElement to watch.
+    this.resize?.disconnect()
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resize = new ResizeObserver(() => this.fit())
+      this.resize.observe(doc.documentElement)
+    }
+    // srcdoc inherits the parent's origin, so the page can hear the sample's own
+    // errors. Without this a broken edit just looks like a preview that quietly
+    // stopped working.
+    this.frame?.contentWindow?.addEventListener('error', (event) => {
+      this.dataset.error = (event as ErrorEvent).message || 'Script error'
+    })
+    this.fit()
+  }
+
+  // `documentElement.scrollHeight` is the obvious measure and the wrong one: it
+  // never reports less than the viewport, and the viewport here is the frame this
+  // is about to size — so a short sample locks to the iframe's default 150px and
+  // an edit that removes content can never shrink it back. The html box's own
+  // height is content-driven, which is what makes shrinking work; body's
+  // scrollHeight covers content that spills out of that box.
+  private fit(): void {
+    const frame = this.frame
+    const doc = frame?.contentDocument
+    if (!doc || !frame) return
+    const content = Math.max(doc.documentElement.getBoundingClientRect().height, doc.body?.scrollHeight ?? 0)
+    // The css height is the *border* box wherever box-sizing is reset, which it is
+    // in most stylesheets, while
+    // what was just measured is the viewport inside it. Without the difference added
+    // back, every preview is short by its own border and shows a scrollbar with two
+    // pixels of travel. Measured rather than hardcoded, so it survives whatever
+    // border or padding the stylesheet puts on the frame.
+    const chrome = frame.offsetHeight - frame.clientHeight
+    frame.style.height = `${Math.ceil(content) + chrome}px`
+  }
+
+  private syncTheme(): void {
+    const doc = this.frame?.contentDocument
+    if (!doc) return
+    const name = this.getAttribute('theme-attribute') || 'data-theme'
+    const theme = document.documentElement.dataset.theme
+    if (theme) doc.documentElement.setAttribute(name, theme)
+    else doc.documentElement.removeAttribute(name)
+  }
+
+  // CodeJar rather than a bare contenteditable: recoloring on every keystroke means
+  // replacing the block's innerHTML, which drops the caret and shreds the undo
+  // stack. Restoring both through IME composition and Firefox's contenteditable
+  // quirks is the reason that library exists. It also brings tab handling and
+  // plaintext paste, so this is less code here, not more.
+  private attachEditor(): void {
+    const code = this.code
+    if (!code) return
+    this.jar = CodeJar(code, (el) => {
+      // hljs skips an element it has already highlighted, and its own pass drops
+      // the language class the next one needs.
+      delete el.dataset.highlighted
+      el.className = `hljs language-${this.language}`
+      hljs.highlightElement(el)
+    }, { tab: '  ' })
+    this.jar.onUpdate((src) => this.schedule(src))
+    this.classList.add('is-editable')
+  }
+}
+
+if (!customElements.get('code-preview')) customElements.define('code-preview', CodePreview)

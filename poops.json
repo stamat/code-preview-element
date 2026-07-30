@@ -1,0 +1,32 @@
+{
+  "scripts": [
+    {
+      "//": "One browser-ready bundle: codejar and highlight.js travel inside it, so a <script> tag is the whole install.",
+      "in": "src/code-preview.ts",
+      "out": "dist/code-preview.js",
+      "options": {
+        "sourcemap": true,
+        "minify": true,
+        "justMinified": false,
+        "format": "iife",
+        "target": "es2019"
+      }
+    }
+  ],
+  "copy": [
+    {
+      "in": ["dist/code-preview.min.js", "src/code-preview.css", "example/src/sample.css"],
+      "out": "example/dist"
+    }
+  ],
+  "markup": {
+    "in": "example/src",
+    "out": "example/dist"
+  },
+  "serve": {
+    "port": 4042,
+    "base": "/example/dist"
+  },
+  "livereload": true,
+  "watch": ["src", "example/src"]
+}

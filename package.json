@@ -1,0 +1,53 @@
+{
+  "name": "code-preview-element",
+  "version": "0.1.0",
+  "description": "A code block that renders itself: live, editable HTML samples in an isolated iframe.",
+  "type": "module",
+  "main": "dist/code-preview.js",
+  "style": "src/code-preview.css",
+  "exports": {
+    ".": "./dist/code-preview.js",
+    "./style": "./src/code-preview.css",
+    "./src/*": "./src/*"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "homepage": "https://github.com/stamat/code-preview-element",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stamat/code-preview-element.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stamat/code-preview-element/issues"
+  },
+  "keywords": [
+    "custom-element",
+    "web-component",
+    "code",
+    "preview",
+    "iframe",
+    "editor",
+    "documentation",
+    "highlight"
+  ],
+  "author": "Nikola Stamatovic <@stamat>",
+  "contributors": [],
+  "license": "MIT",
+  "scripts": {
+    "dev": "poops",
+    "build": "poops -b",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && node --test"
+  },
+  "dependencies": {
+    "codejar": "^4.3.0",
+    "highlight.js": "^11.11.1"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "poops": "^1.9.7",
+    "typescript": "^5.6.3"
+  }
+}
