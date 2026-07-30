@@ -4,11 +4,19 @@
   "description": "A code block that renders itself: live, editable HTML samples in an isolated iframe.",
   "type": "module",
   "main": "dist/code-preview.js",
+  "types": "dist/code-preview.d.ts",
   "style": "dist/code-preview.css",
   "exports": {
-    ".": "./dist/code-preview.js",
+    ".": {
+      "types": "./dist/code-preview.d.ts",
+      "default": "./dist/code-preview.js"
+    },
+    "./hljs": {
+      "types": "./dist/code-preview-hljs.d.ts",
+      "default": "./dist/code-preview-hljs.js"
+    },
     "./style": "./dist/code-preview.css",
-    "./hljs": "./dist/code-preview-hljs.css",
+    "./theme": "./dist/code-preview-hljs.css",
     "./dist/*": "./dist/*",
     "./src/*": "./src/*"
   },

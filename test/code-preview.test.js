@@ -21,9 +21,9 @@ import { build } from 'esbuild'
 import { JSDOM } from 'jsdom'
 import path from 'node:path'
 
-const entry = path.resolve(import.meta.dirname, '../src/code-preview.ts')
+const src = (name) => path.resolve(import.meta.dirname, `../src/${name}.ts`)
 
-const bundle = async (format) => (await build({
+const bundle = async (entry, format) => (await build({
   entryPoints: [entry],
   bundle: true,
   format,
@@ -34,7 +34,11 @@ const bundle = async (format) => (await build({
 
 let buildSrcdoc
 let scaleToFit
-let iife
+// The two bundles: the default, which expects the page to have brought a highlighter,
+// and the one with highlight.js inside it. Most of what follows is about the element
+// rather than either build, and runs against `bundled` because it can assert colour.
+let plain
+let bundled
 
 before(async () => {
   // codejar reads `window` at module scope; the class declaration and its
@@ -42,9 +46,10 @@ before(async () => {
   globalThis.window = globalThis
   globalThis.HTMLElement = class {}
   globalThis.customElements = { get: () => undefined, define: () => {} }
-  const esm = await bundle('esm')
+  const esm = await bundle(src('code-preview'), 'esm')
   ;({ buildSrcdoc, scaleToFit } = await import(`data:text/javascript;base64,${Buffer.from(esm).toString('base64')}`))
-  iife = await bundle('iife')
+  plain = await bundle(src('code-preview'), 'iife')
+  bundled = await bundle(src('code-preview-hljs'), 'iife')
 })
 
 test('an emulated viewport is scaled down to the space available, never up', () => {
@@ -95,7 +100,10 @@ test('a sample that brings its own document owns its head', () => {
 // Boots the element in a jsdom page and hands back what the tests poke at.
 function mount (
   attributes = 'css="../../dist/lib.css" theme-attribute="data-color-scheme" no-edit',
-  block = '<pre><code class="hljs language-html">&lt;button class="btn"&gt;Hi&lt;/button&gt;</code></pre>'
+  block = '<pre><code class="hljs language-html">&lt;button class="btn"&gt;Hi&lt;/button&gt;</code></pre>',
+  // Which bundle to boot, and a hook to put things on the page before it runs — both
+  // only for the default build, which reads its highlighter off the window.
+  { script: source = bundled, setup } = {}
 ) {
   const page = new JSDOM(`<!DOCTYPE html><html data-theme="dark"><body>
     <code-preview ${attributes}>
@@ -103,8 +111,9 @@ function mount (
     </code-preview>
   </body></html>`, { runScripts: 'dangerously' })
 
+  setup?.(page.window)
   const script = page.window.document.createElement('script')
-  script.textContent = iife
+  script.textContent = source
   page.window.document.head.appendChild(script)
 
   return page.window.document.querySelector('code-preview')
@@ -124,6 +133,11 @@ test('the element renders through srcdoc, not into about:blank', () => {
 
   // no-edit leaves the block alone — CodeJar sets contenteditable when it takes over.
   assert.equal(element.querySelector('code').getAttribute('contenteditable'), null)
+
+  // The frame is sized to its whole document and must never scroll: a scrollbar inside
+  // the preview is scaled along with everything else and steals width from the layout
+  // being demonstrated. The wrapper is the one thing that scrolls — the cap is there.
+  assert.equal(frame.getAttribute('scrolling'), 'no')
 })
 
 test('a plain block gets highlighted, a pre-highlighted one is left alone', () => {
@@ -138,6 +152,35 @@ test('a plain block gets highlighted, a pre-highlighted one is left alone', () =
   // identical result, and any version skew would reshuffle the block on load.
   const done = mount('no-edit', '<pre><code class="hljs language-html"><span class="hljs-tag">KEEP</span></code></pre>')
   assert.equal(done.querySelector('code').innerHTML, '<span class="hljs-tag">KEEP</span>')
+})
+
+// The default bundle, which carries no highlighter. It is the one most people load, so
+// both outcomes of a hook looked up at runtime have to be covered: a page that brought
+// hljs, and a page that did not.
+const UNCOLOURED = '<pre><code class="language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>'
+
+test('the default build previews with no highlighter at all', () => {
+  const element = mount('no-edit', UNCOLOURED, { script: plain })
+
+  assert.ok(element.querySelector('iframe'), 'the element did not upgrade without hljs')
+  assert.match(element.querySelector('iframe').getAttribute('srcdoc') ?? '', /<body><b>hi<\/b><\/body>/)
+  // Monochrome is the honest outcome, and it must not have eaten the sample trying.
+  assert.equal(element.querySelector('code').textContent, '<b>hi</b>')
+})
+
+test('the default build highlights through the page global', () => {
+  const seen = []
+  const element = mount('no-edit', UNCOLOURED, {
+    script: plain,
+    setup: (window) => {
+      window.hljs = { highlightElement: (el) => seen.push(el.className) }
+    }
+  })
+
+  // The adapter's job either side of the hljs call: the language class hljs needs,
+  // and the `highlighted` flag that would otherwise make the next pass a no-op.
+  assert.deepEqual(seen, ['hljs language-html'])
+  assert.equal(element.querySelector('code').dataset.highlighted, undefined)
 })
 
 test('no width switcher unless one is asked for', () => {

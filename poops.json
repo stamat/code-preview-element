@@ -1,7 +1,7 @@
 {
   "scripts": [
     {
-      "//": "One browser-ready bundle: codejar and highlight.js travel inside it, so a <script> tag is the whole install.",
+      "//": "The default bundle: the element and codejar, no highlighter — a docs site that already loads highlight.js should not ship a second copy.",
       "in": "src/code-preview.ts",
       "out": "dist/code-preview.js",
       "options": {
@@ -11,8 +11,23 @@
         "format": "iife",
         "target": "es2019"
       }
+    },
+    {
+      "//": "The same element with highlight.js bundled in, for a page that has none. Same options as above, so the only difference between the two bundles is the entry file.",
+      "in": "src/code-preview-hljs.ts",
+      "out": "dist/code-preview-hljs.js",
+      "options": {
+        "sourcemap": true,
+        "minify": true,
+        "justMinified": false,
+        "format": "iife",
+        "target": "es2019"
+      }
     }
   ],
+  "exec": {
+    "build": "tsc -p tsconfig.build.json"
+  },
   "styles": [
     {
       "//": "Plain css in, plain css out — the point is a shipped dist/ that a consumer can link without a build of their own.",
@@ -29,8 +44,9 @@
   ],
   "copy": [
     {
+      "//": "The example page loads no highlighter of its own, so it takes the bundle that brings one.",
       "in": [
-        "dist/code-preview.min.js",
+        "dist/code-preview-hljs.min.js",
         "dist/code-preview.min.css",
         "dist/code-preview-hljs.min.css",
         "example/src/sample.css"

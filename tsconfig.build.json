@@ -1,0 +1,10 @@
+{
+  "//": "Declarations only. esbuild — which is what actually builds dist/ — does not emit them, so tsc runs alongside it purely for the .d.ts files. Wired in as a poops exec hook, not a separate npm script, so `poops -b` stays the one build command.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist"
+  }
+}
