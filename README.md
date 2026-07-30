@@ -291,6 +291,12 @@ npm run build      # dist/ + example/dist/
 npm test           # typecheck + node --test
 ```
 
+The example page is the [`poops-docs-theme`](https://github.com/stamat/poops-docs-theme)
+`prose` layout, a dev dependency — so the demo doubles as the check that the element
+drops into a real docs theme: its tokens, its highlight.js colours, its copy buttons
+wrapping every `pre`. The one thing it has to say out loud is the margin override that
+`code-preview.css` documents.
+
 ## License
 
 MIT

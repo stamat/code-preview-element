@@ -58,6 +58,7 @@
   "devDependencies": {
     "jsdom": "^29.1.1",
     "poops": "^1.9.7",
+    "poops-docs-theme": "^1.1.2",
     "typescript": "^5.6.3"
   }
 }

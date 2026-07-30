@@ -44,19 +44,38 @@
   ],
   "copy": [
     {
-      "//": "The example page loads no highlighter of its own, so it takes the bundle that brings one.",
+      "//": "The example page loads no highlighter of its own, so it takes the bundle that brings one. No code-preview-hljs.css either — the docs theme colours the tokens, which is the case the separate stylesheet exists to allow.",
       "in": [
         "dist/code-preview-hljs.min.js",
         "dist/code-preview.min.css",
-        "dist/code-preview-hljs.min.css",
         "example/src/sample.css"
       ],
       "out": "example/dist"
+    },
+    {
+      "//": "The prose layout links css/prose.min.css. Prebuilt, so the example does not compile the theme's scss to use one page of it — and only the prose half of it, since the docs bundle is an alternative, not a layer.",
+      "in": ["node_modules/poops-docs-theme/dist/css/prose.min.css"],
+      "out": "example/dist/css"
+    },
+    {
+      "in": ["node_modules/poops-docs-theme/dist/js/prose.min.js"],
+      "out": "example/dist/js"
     }
   ],
   "markup": {
     "in": "example/src",
-    "out": "example/dist"
+    "out": "example/dist",
+    "site": {
+      "title": "code-preview",
+      "brand": "code-preview-element",
+      "brandMark": "🪟",
+      "description": "A code block that renders itself: live, editable HTML samples in an isolated iframe.",
+      "lang": "en",
+      "repo": "https://github.com/stamat/code-preview-element",
+      "iconLinks": [
+        { "title": "npm", "url": "https://www.npmjs.com/package/code-preview-element", "icon": "npm" }
+      ]
+    }
   },
   "serve": {
     "port": 4042,
