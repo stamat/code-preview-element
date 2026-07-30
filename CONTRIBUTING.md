@@ -9,10 +9,14 @@ short list of things that are hard to notice are missing once a change is alread
 npm install
 npm run dev        # site/ on :4040, live reload
 npm run build      # dist/ + _site/
-npm test           # typecheck + node --test
+npm run lint       # eslint (--fix fixes nearly all of it)
+npm test           # lint + typecheck + node --test
 ```
 
-`npm test` is what CI runs, and it is `tsc --noEmit` followed by `node --test`. There is no test
+`npm test` is what CI runs, and it is `eslint .` then `tsc --noEmit` then `node --test`. The lint
+config is [neostandard](https://github.com/neostandard/neostandard) with one rule changed, so it
+is the machine version of the style note below rather than a second set of opinions — run
+`npx eslint . --fix` and it is usually done. There is no test
 framework and no test config — the runner is Node's own, the suite is one file in
 [`test/`](test/), and it bundles `src/` through esbuild (a `poops` dependency) to get at the
 browser code. Please keep it that way; a framework here would be more configuration than test.

@@ -49,15 +49,18 @@
     "dev": "poops",
     "build": "poops -b",
     "prepack": "poops -b",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && node --test"
+    "test": "npm run lint && npm run typecheck && node --test"
   },
   "dependencies": {
     "codejar": "^4.3.0",
     "highlight.js": "^11.11.1"
   },
   "devDependencies": {
+    "eslint": "^9.39.5",
     "jsdom": "^29.1.1",
+    "neostandard": "^0.13.0",
     "poops": "^1.9.7",
     "poops-docs-theme": "^1.1.2",
     "typescript": "^5.6.3"

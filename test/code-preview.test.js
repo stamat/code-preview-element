@@ -23,7 +23,7 @@ import path from 'node:path'
 
 const src = (name) => path.resolve(import.meta.dirname, `../src/${name}.ts`)
 
-const bundle = async (entry, format) => (await build({
+const bundle = async(entry, format) => (await build({
   entryPoints: [entry],
   bundle: true,
   format,
@@ -40,7 +40,7 @@ let scaleToFit
 let plain
 let bundled
 
-before(async () => {
+before(async() => {
   // codejar reads `window` at module scope; the class declaration and its
   // registration need `HTMLElement` and `customElements`.
   globalThis.window = globalThis
@@ -98,7 +98,7 @@ test('a sample that brings its own document owns its head', () => {
 })
 
 // Boots the element in a jsdom page and hands back what the tests poke at.
-function mount (
+function mount(
   attributes = 'css="../../dist/lib.css" theme-attribute="data-color-scheme" no-edit',
   block = '<pre><code class="hljs language-html">&lt;button class="btn"&gt;Hi&lt;/button&gt;</code></pre>',
   // Which bundle to boot, and a hook to put things on the page before it runs — both
@@ -138,6 +138,15 @@ test('the element renders through srcdoc, not into about:blank', () => {
   // the preview is scaled along with everything else and steals width from the layout
   // being demonstrated. The wrapper is the one thing that scrolls — the cap is there.
   assert.equal(frame.getAttribute('scrolling'), 'no')
+})
+
+// Layout shift: the stylesheet reserves a height for the preview before there is one,
+// and a measurement taken before the frame has loaded would be the blank document's —
+// zero — which collapses that reservation and shifts the page twice over. jsdom never
+// loads a srcdoc, so this is exactly the pre-load state.
+test('nothing is measured before the frame has loaded', () => {
+  const viewport = mount().querySelector('.code-preview-viewport')
+  assert.equal(viewport.style.height, '', 'a blank frame was measured over the reserved height')
 })
 
 test('a plain block gets highlighted, a pre-highlighted one is left alone', () => {
