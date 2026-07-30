@@ -1,4 +1,4 @@
-# code-preview-element
+# 🪟 code-preview-element [![npm version](https://img.shields.io/npm/v/code-preview-element)](https://www.npmjs.com/package/code-preview-element) [![ci](https://img.shields.io/github/actions/workflow/status/stamat/code-preview-element/ci.yml?branch=main&label=ci)](https://github.com/stamat/code-preview-element/actions/workflows/ci.yml) [![license mit](https://img.shields.io/badge/license-MIT-green)](https://github.com/stamat/code-preview-element/blob/main/LICENSE)
 
 A code block that renders itself. `<code-preview>` wraps a highlighted
 `<pre><code>` in a live preview: an iframe above the code, the code editable, edits
@@ -6,7 +6,10 @@ applied as you type. The sample is the only source of truth, so a documented exa
 and what it actually does cannot drift.
 
 ```html
-<link rel="stylesheet" href="node_modules/code-preview-element/dist/code-preview.min.css">
+<link
+  rel="stylesheet"
+  href="node_modules/code-preview-element/dist/code-preview.min.css"
+/>
 <script src="node_modules/code-preview-element/dist/code-preview.min.js"></script>
 
 <code-preview css="dist/my-library.css">
@@ -58,25 +61,25 @@ bundler config, no origin to serve demo files from.
 
 Reach for something else when the shape of the problem is different:
 
-| Instead | When |
-|---|---|
-| [playground-elements](https://github.com/google/playground-elements) | multi-file samples, TypeScript compiled in the browser, bare `import`s resolved from npm. Costs a service worker and a few hundred KB. |
-| [Sandpack](https://sandpack.codesandbox.io/) | demoing React components rather than markup and CSS. |
-| [@mdjs/mdjs-preview](https://www.npmjs.com/package/@mdjs/mdjs-preview) | you are already on the mdjs/rocket toolchain and write demos as JS functions. |
-| StackBlitz / CodePen embeds | the reader should be able to fork the sample and keep it. |
+| Instead                                                                | When                                                                                                                                   |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [playground-elements](https://github.com/google/playground-elements)   | multi-file samples, TypeScript compiled in the browser, bare `import`s resolved from npm. Costs a service worker and a few hundred KB. |
+| [Sandpack](https://sandpack.codesandbox.io/)                           | demoing React components rather than markup and CSS.                                                                                   |
+| [@mdjs/mdjs-preview](https://www.npmjs.com/package/@mdjs/mdjs-preview) | you are already on the mdjs/rocket toolchain and write demos as JS functions.                                                          |
+| StackBlitz / CodePen embeds                                            | the reader should be able to fork the sample and keep it.                                                                              |
 
 ## Attributes
 
-| Attribute | Effect |
-|---|---|
-| `css` | whitespace-separated stylesheet urls for the frame |
-| `js` | whitespace-separated script urls for the frame |
-| `head` | extra head html, replacing the default `body{margin:0;padding:1rem}` |
+| Attribute         | Effect                                                                      |
+| ----------------- | --------------------------------------------------------------------------- |
+| `css`             | whitespace-separated stylesheet urls for the frame                          |
+| `js`              | whitespace-separated script urls for the frame                              |
+| `head`            | extra head html, replacing the default `body{margin:0;padding:1rem}`        |
 | `theme-attribute` | attribute the host page's `[data-theme]` is mirrored onto, inside the frame |
-| `viewport-width` | render at this css width and scale it down to fit |
-| `viewport-widths` | whitespace-separated widths to offer as buttons |
-| `no-edit` | render the preview, leave the code read-only |
-| `reload` | always rebuild the frame on edit, never patch it |
+| `viewport-width`  | render at this css width and scale it down to fit                           |
+| `viewport-widths` | whitespace-separated widths to offer as buttons                             |
+| `no-edit`         | render the preview, leave the code read-only                                |
+| `reload`          | always rebuild the frame on edit, never patch it                            |
 
 Relative urls in `css`/`js` resolve against the **host page** — that is what a
 `srcdoc` document inherits as its base url — so a page two directories down needs
@@ -90,7 +93,7 @@ layout. `viewport-width` fixes that by giving the frame a real width and scaling
 rendered result down to fit:
 
 ```html
-<code-preview css="dist/my-library.css" viewport-width="1024">
+<code-preview css="dist/my-library.css" viewport-width="1024"></code-preview>
 ```
 
 CSS `zoom` is not an alternative — it shrinks the rendering without changing the
@@ -107,7 +110,10 @@ To let a reader compare breakpoints instead of picking one for them, add
 `viewport-widths`:
 
 ```html
-<code-preview css="dist/my-library.css" viewport-widths="375 768 1024">
+<code-preview
+  css="dist/my-library.css"
+  viewport-widths="375 768 1024"
+></code-preview>
 ```
 
 That renders a row of buttons — `Fit`, then one per width — which do nothing but set
@@ -129,12 +135,16 @@ url prefix is known. A marker in the markdown keeps it opt-in:
 
 ```js
 // <!-- demo --> followed by an html fence, in the built html
-const marker = /<!-- demo -->\s*(<pre><code class="hljs language-html">[\s\S]*?<\/code><\/pre>)/g
-html = html.replace(marker, (_, fence) =>
-  `<!-- demo --><code-preview css="${prefix}dist/my-library.css">${fence}</code-preview>`)
+const marker =
+  /<!-- demo -->\s*(<pre><code class="hljs language-html">[\s\S]*?<\/code><\/pre>)/g;
+html = html.replace(
+  marker,
+  (_, fence) =>
+    `<!-- demo --><code-preview css="${prefix}dist/my-library.css">${fence}</code-preview>`,
+);
 ```
 
-Leave the marker in the output and put the element *between* it and the fence: the
+Leave the marker in the output and put the element _between_ it and the fence: the
 pattern then no longer matches, so a re-run is a no-op — which matters for watch
 modes that recompile only the pages that changed and then post-process all of them.
 
@@ -144,25 +154,25 @@ and `after:highlightElement` fires once per block with the `<code>` in hand:
 
 ```js
 hljs.addPlugin({
-  'after:highlightElement': ({ el }) => {
+  "after:highlightElement": ({ el }) => {
     // Opt in per block, and never wrap twice. Whichever signal your generator can
     // put on a fence works — a class here, because it survives the most of them.
-    if (!el.classList.contains('demo') || el.closest('code-preview')) return
+    if (!el.classList.contains("demo") || el.closest("code-preview")) return;
 
-    const pre = el.parentElement
-    const preview = document.createElement('code-preview')
-    preview.setAttribute('css', '/dist/my-library.css')
+    const pre = el.parentElement;
+    const preview = document.createElement("code-preview");
+    preview.setAttribute("css", "/dist/my-library.css");
 
     // Assembled off-DOM and inserted whole. The element upgrades the instant it is
     // connected and looks for its `<pre><code>` right then, so a wrapper connected
     // empty and filled afterwards never builds a preview at all.
-    const anchor = document.createComment('code-preview')
-    pre.replaceWith(anchor)
-    preview.appendChild(pre)
-    anchor.replaceWith(preview)
-  }
-})
-hljs.highlightAll()
+    const anchor = document.createComment("code-preview");
+    pre.replaceWith(anchor);
+    preview.appendChild(pre);
+    anchor.replaceWith(preview);
+  },
+});
+hljs.highlightAll();
 ```
 
 Register the plugin before `highlightAll`; the element's own script tag can come in
@@ -172,7 +182,7 @@ opt-in check is a predicate rather than a regex over html — `data-` attributes
 language, the sample's own content, whatever the block already carries.
 
 Opting in is the whole difficulty, and it is a markdown problem rather than an hljs
-one: a docs page is full of html fences that are not demos, so *every* html fence is
+one: a docs page is full of html fences that are not demos, so _every_ html fence is
 the wrong default. What gets a class onto a fence depends on the generator —
 `markdown-it-attrs` takes ` ```html {.demo} `, several others pass the info string
 through as extra classes, and a plugin-less setup has the marker-comment route above.
@@ -201,10 +211,10 @@ script that already ran does not re-run against markup replacing what it initial
 
 Same element, and the only difference is whether highlight.js rides along:
 
-| Bundle | | |
-|---|---|---|
-| `dist/code-preview.min.js` | 11KB | the default. No highlighter; uses `window.hljs` if the page has one. |
-| `dist/code-preview-hljs.min.js` | 53KB | highlight.js bundled in, for a page with none. |
+| Bundle                          |      |                                                                      |
+| ------------------------------- | ---- | -------------------------------------------------------------------- |
+| `dist/code-preview.min.js`      | 11KB | the default. No highlighter; uses `window.hljs` if the page has one. |
+| `dist/code-preview-hljs.min.js` | 53KB | highlight.js bundled in, for a page with none.                       |
 
 The default reads the global per call rather than once at startup, so the order of the
 two script tags does not matter:
@@ -218,14 +228,18 @@ A page that highlighted its fences at build time and ships no runtime hljs is th
 the default cannot cover: the preview and the editor still work, the block keeps
 whatever colour the generator baked in, and typing stops recolouring it. That page
 wants the `-hljs` build — it is the whole install in one tag, and the reason to reach
-for it is the *editor*, not the first paint.
+for it is the _editor_, not the first paint.
 
 The only thing the default build asks of that global is one method, so something other
 than highlight.js can stand in — Prism, Shiki's browser build, your own — as long as it
 is in place before the element registers:
 
 ```js
-window.hljs = { highlightElement (element) { /* recolour it, leave textContent alone */ } }
+window.hljs = {
+  highlightElement(element) {
+    /* recolour it, leave textContent alone */
+  },
+};
 ```
 
 The block arrives carrying `class="hljs language-<lang>"`, and the sample is its
@@ -237,9 +251,9 @@ code that registers the element itself rather than loading a bundle that does.
 
 Two stylesheets ship in `dist`, both plain CSS, minified and not:
 
-| File | |
-|---|---|
-| `dist/code-preview.css` | required — the layout the element needs to work |
+| File                         |                                                       |
+| ---------------------------- | ----------------------------------------------------- |
+| `dist/code-preview.css`      | required — the layout the element needs to work       |
 | `dist/code-preview-hljs.css` | optional — highlight.js token colours, light and dark |
 
 The second is separate on purpose: a docs site that already ships a syntax theme
@@ -260,7 +274,9 @@ margin. If a gap survives anyway, a host theme is outranking the package: its
 one type. Win it back from the host side:
 
 ```css
-.prose code-preview > :is(pre, .code-wrap) { margin: 0; }
+.prose code-preview > :is(pre, .code-wrap) {
+  margin: 0;
+}
 ```
 
 `max-height` on the frame is load-bearing, not taste: the element sizes the frame
@@ -281,17 +297,17 @@ grows the viewport, which grows the sample. The cap makes that converge.
 - **Previews need JS.** Without it the page is a plain code block.
 - **Sizing and the patch-on-edit path have no automated test.** jsdom has no layout
   and fires an iframe's `load` without rendering the `srcdoc`, so a test of either
-  would assert fiction. `npm run dev` and the example page are the check.
+  would assert fiction. `npm run dev` and the site are the check.
 
 ## Development
 
 ```
-npm run dev        # example page on :4042, live reload
-npm run build      # dist/ + example/dist/
+npm run dev        # site/ on :4040, live reload
+npm run build      # dist/ + _site/
 npm test           # typecheck + node --test
 ```
 
-The example page is the [`poops-docs-theme`](https://github.com/stamat/poops-docs-theme)
+The site is the [`poops-docs-theme`](https://github.com/stamat/poops-docs-theme)
 `prose` layout, a dev dependency — so the demo doubles as the check that the element
 drops into a real docs theme: its tokens, its highlight.js colours, its copy buttons
 wrapping every `pre`. The one thing it has to say out loud is the margin override that

@@ -24,7 +24,7 @@
     "dist",
     "src"
   ],
-  "homepage": "https://github.com/stamat/code-preview-element",
+  "homepage": "https://stamat.github.io/code-preview-element/",
   "repository": {
     "type": "git",
     "url": "https://github.com/stamat/code-preview-element.git"
@@ -48,6 +48,7 @@
   "scripts": {
     "dev": "poops",
     "build": "poops -b",
+    "prepack": "poops -b",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && node --test"
   },

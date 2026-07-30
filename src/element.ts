@@ -386,13 +386,21 @@ export class CodePreview extends HTMLElement {
     // getBoundingClientRect already accounts for the transform, so the wrapper matches
     // what the frame visually occupies rather than matching arithmetic that then has
     // to agree with the browser's rounding.
-    //
+    const visible = Math.ceil(frame.getBoundingClientRect().height)
+    // A transform shrinks what is drawn and not the box it is drawn in, so a scaled
+    // frame still takes its full unscaled height in layout — which is taller than the
+    // wrapper sized to what it visually occupies, and that is the scrollbar down the
+    // right of every emulated width. Give the difference back as negative margin: the
+    // frame's footprint becomes what it looks like, and the wrapper's own max-height
+    // still scrolls a genuinely tall sample.
+    frame.style.marginBottom = visible < content ? `${visible - content}px` : ''
+
     // The wrapper's height is its border box — the stylesheet sets box-sizing itself
     // rather than trusting the host to — while the rect is the space inside it. Without
     // the difference added back every preview is short by its own border. Measured, so
     // it survives whatever border or padding the stylesheet ends up putting there.
     const chrome = viewport.offsetHeight - viewport.clientHeight
-    const height = `${Math.ceil(frame.getBoundingClientRect().height) + chrome}px`
+    const height = `${visible + chrome}px`
     // Writing an unchanged height would be a no-op, but the wrapper is observed for
     // width changes, and an unchanged write still costs a layout pass per demo.
     if (viewport.style.height !== height) viewport.style.height = height

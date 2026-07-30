@@ -11,4 +11,4 @@ Thumbs.db
 .history
 
 dist/
-example/dist/
+_site/

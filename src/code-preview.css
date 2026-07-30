@@ -81,7 +81,9 @@ code-preview .code-preview-viewport {
 }
 
 /* aspect-ratio is unset because a host stylesheet that gives every iframe a 16/9
-   ratio (right for video, wrong here) would otherwise win. The transform origin is
+   ratio (right for video, wrong here) would otherwise win, and the radius for the same
+   reason — the wrapper is the rounded box, and a frame that rounds its own bottom
+   corners cuts a notch out of the seam with the code block. The transform origin is
    what makes a scaled frame line up with the wrapper's top-left corner. */
 code-preview .code-preview-frame {
   box-sizing: border-box;
@@ -90,6 +92,7 @@ code-preview .code-preview-frame {
   aspect-ratio: auto;
   margin: 0;
   border: 0;
+  border-radius: 0;
   transform-origin: 0 0;
 }
 

@@ -11,7 +11,7 @@
 //
 // Not covered, because jsdom would assert fiction: sizing (no layout engine) and the
 // patch-on-edit path (jsdom fires an iframe's load event without ever rendering the
-// srcdoc). Those need a real browser — `npm run dev` and the example page.
+// srcdoc). Those need a real browser — `npm run dev` and the site.
 //
 // The source is TypeScript for the browser, so it goes through esbuild (a poops
 // dependency). Twice: esm to import `buildSrcdoc` here, iife to run inside jsdom.
