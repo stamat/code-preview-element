@@ -92,9 +92,10 @@ test('a sample that brings its own document owns its head', () => {
   assert.equal(buildSrcdoc(own, { css: ['x.css'] }), own)
 })
 
-test('the element renders through srcdoc, not into about:blank', () => {
+// Boots the element in a jsdom page and hands back what the tests poke at.
+function mount (attributes = 'css="../../dist/lib.css" theme-attribute="data-color-scheme" no-edit') {
   const page = new JSDOM(`<!DOCTYPE html><html data-theme="dark"><body>
-    <code-preview css="../../dist/lib.css" theme-attribute="data-color-scheme" no-edit>
+    <code-preview ${attributes}>
       <pre><code class="hljs language-html">&lt;button class="btn"&gt;Hi&lt;/button&gt;</code></pre>
     </code-preview>
   </body></html>`, { runScripts: 'dangerously' })
@@ -103,7 +104,11 @@ test('the element renders through srcdoc, not into about:blank', () => {
   script.textContent = iife
   page.window.document.head.appendChild(script)
 
-  const element = page.window.document.querySelector('code-preview')
+  return page.window.document.querySelector('code-preview')
+}
+
+test('the element renders through srcdoc, not into about:blank', () => {
+  const element = mount()
   const viewport = element.querySelector('.code-preview-viewport')
   const frame = element.querySelector('iframe')
 
@@ -116,4 +121,34 @@ test('the element renders through srcdoc, not into about:blank', () => {
 
   // no-edit leaves the block alone — CodeJar sets contenteditable when it takes over.
   assert.equal(element.querySelector('code').getAttribute('contenteditable'), null)
+})
+
+test('no width switcher unless one is asked for', () => {
+  assert.equal(mount().querySelector('.code-preview-bar'), null)
+})
+
+test('the width switcher drives the viewport-width attribute', () => {
+  const element = mount('viewport-widths="375 1024" no-edit')
+  const bar = element.querySelector('.code-preview-bar')
+  const buttons = [...bar.querySelectorAll('.code-preview-width')]
+
+  assert.deepEqual(buttons.map((b) => b.textContent), ['Fit', '375px', '1024px'])
+  assert.equal(bar.getAttribute('role'), 'group')
+  // Nothing emulated to begin with, so "Fit" is the one held down.
+  assert.deepEqual(buttons.map((b) => b.getAttribute('aria-pressed')), ['true', 'false', 'false'])
+
+  buttons[2].click()
+  assert.equal(element.getAttribute('viewport-width'), '1024')
+  assert.deepEqual(buttons.map((b) => b.getAttribute('aria-pressed')), ['false', 'false', 'true'])
+
+  buttons[0].click()
+  assert.equal(element.hasAttribute('viewport-width'), false, 'Fit means no emulated width at all')
+  assert.equal(buttons[0].getAttribute('aria-pressed'), 'true')
+})
+
+test('an initial viewport-width is what the switcher shows as pressed', () => {
+  const element = mount('viewport-width="768" viewport-widths="375 768" no-edit')
+  const pressed = element.querySelectorAll('.code-preview-width[aria-pressed="true"]')
+  assert.equal(pressed.length, 1)
+  assert.equal(pressed[0].textContent, '768px')
 })

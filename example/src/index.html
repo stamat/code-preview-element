@@ -78,9 +78,9 @@
   <p>A frame in a text column is a ~700px viewport, and the media queries inside read
     that honestly — so a responsive sample only ever shows its narrow layout.
     <code>viewport-width="1024"</code> renders at a real 1024px and scales the result
-    to fit, so the wider breakpoints apply. Narrow your window and watch it fall back
-    to one column.</p>
-  <code-preview css="sample.css" theme-attribute="data-theme" viewport-width="1024">
+    to fit, so the wider breakpoints apply. <code>viewport-widths</code> adds the
+    buttons — or narrow your window and watch it fall back on its own.</p>
+  <code-preview css="sample.css" theme-attribute="data-theme" viewport-width="1024" viewport-widths="375 768 1024">
     <pre><code class="hljs language-html">&lt;div class="cols"&gt;
   &lt;div class="card"&gt;&lt;h3&gt;One&lt;/h3&gt;&lt;p&gt;Three across above 900px.&lt;/p&gt;&lt;/div&gt;
   &lt;div class="card"&gt;&lt;h3&gt;Two&lt;/h3&gt;&lt;p&gt;Two across above 600px.&lt;/p&gt;&lt;/div&gt;

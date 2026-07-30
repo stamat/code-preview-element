@@ -30,6 +30,7 @@ page loading the real stylesheet.
 | `head` | extra head html, replacing the default `body{margin:0;padding:1rem}` |
 | `theme-attribute` | attribute the host page's `[data-theme]` is mirrored onto, inside the frame |
 | `viewport-width` | render at this css width and scale it down to fit |
+| `viewport-widths` | whitespace-separated widths to offer as buttons |
 | `no-edit` | render the preview, leave the code read-only |
 | `reload` | always rebuild the frame on edit, never patch it |
 
@@ -57,6 +58,19 @@ alone rather than scaled up.
 Keep the emulated width modest — 1024 rather than 1600. Everything in the frame
 shrinks by the same factor, text included, and a preview nobody can read is not a
 better preview.
+
+To let a reader compare breakpoints instead of picking one for them, add
+`viewport-widths`:
+
+```html
+<code-preview css="dist/my-library.css" viewport-widths="375 768 1024">
+```
+
+That renders a row of buttons — `Fit`, then one per width — which do nothing but set
+`viewport-width` on the element. The attribute stays the single source of truth, so a
+hand-written attribute, a click and a script all take the same path, and combining
+the two attributes just decides which button starts out pressed. `Fit` removes the
+attribute: natural width, no scaling.
 
 ## Wiring it up
 

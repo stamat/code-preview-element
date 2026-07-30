@@ -36,6 +36,9 @@
 //   theme-attribute  attribute the host page's [data-theme] is mirrored onto
 //   viewport-width   render at this css width and scale it down to fit, so the
 //                    sample's wider media queries apply (see scaleToFit)
+//   viewport-widths  whitespace-separated widths to offer as buttons, which set
+//                    `viewport-width` — the attribute stays the single source of
+//                    truth, so external code can drive it just as well
 //   no-edit          render the preview, leave the code read-only
 //   reload           always rebuild the frame on edit, never patch it
 import { CodeJar } from 'codejar'
@@ -115,8 +118,14 @@ export function buildSrcdoc(
 }
 
 export class CodePreview extends HTMLElement {
+  // The width buttons write `viewport-width`, and this is what makes that enough:
+  // the attribute is the state, so a click, a script and a hand-written attribute
+  // all take the same path.
+  static observedAttributes = ['viewport-width']
+
   private frame?: HTMLIFrameElement
   private viewport?: HTMLElement
+  private bar?: HTMLElement
   private code?: HTMLElement
   private language = 'html'
   private resize?: ResizeObserver
@@ -162,7 +171,55 @@ export class CodePreview extends HTMLElement {
     this.theme = new MutationObserver(() => this.syncTheme())
     this.theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 
+    const widths = list(this.getAttribute('viewport-widths')).map(Number).filter((width) => width > 0)
+    if (widths.length) this.buildBar(widths)
+
     if (!this.hasAttribute('no-edit') && EDITABLE.test(this.language)) this.attachEditor()
+  }
+
+  attributeChangedCallback(name: string, before: string | null, after: string | null): void {
+    // Fires before connectedCallback for attributes present in the markup; there is
+    // nothing to resize yet, and connectedCallback does the first fit anyway.
+    if (name !== 'viewport-width' || before === after || !this.frame) return
+    this.syncBar()
+    this.fit()
+  }
+
+  // A row of widths to render at. `role="group"` with a label rather than a
+  // toolbar/tablist: these are plain buttons, and the richer roles oblige arrow-key
+  // navigation that plain buttons do not need to be usable.
+  private buildBar(widths: number[]): void {
+    const bar = document.createElement('div')
+    bar.className = 'code-preview-bar'
+    bar.setAttribute('role', 'group')
+    bar.setAttribute('aria-label', 'Preview width')
+
+    const button = (label: string, width: string): HTMLButtonElement => {
+      const element = document.createElement('button')
+      element.type = 'button'
+      element.className = 'code-preview-width'
+      element.textContent = label
+      element.dataset.width = width
+      // Empty width means the frame's natural width — no emulation, no scaling.
+      element.addEventListener('click', () => {
+        if (width) this.setAttribute('viewport-width', width)
+        else this.removeAttribute('viewport-width')
+      })
+      return element
+    }
+
+    bar.appendChild(button('Fit', ''))
+    for (const width of widths) bar.appendChild(button(`${width}px`, String(width)))
+    this.prepend(bar)
+    this.bar = bar
+    this.syncBar()
+  }
+
+  private syncBar(): void {
+    const current = this.getAttribute('viewport-width') ?? ''
+    this.bar?.querySelectorAll<HTMLButtonElement>('.code-preview-width').forEach((button) => {
+      button.setAttribute('aria-pressed', String((button.dataset.width ?? '') === current))
+    })
   }
 
   disconnectedCallback(): void {
