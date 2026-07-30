@@ -15,6 +15,7 @@ code-preview {
 /* The width switcher, when `viewport-widths` asks for one. It sits on top of the
    preview and takes over the top border and corners, so the two stay one object. */
 code-preview .code-preview-bar {
+  box-sizing: border-box;
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
@@ -60,6 +61,11 @@ code-preview .code-preview-width:focus-visible {
    scrolls whatever is past it. min-height covers the other end — the frame loads
    lazily and has no height at all until it does. */
 code-preview .code-preview-viewport {
+  /* Declared, not inherited: the element measures the frame's content and then
+     writes a height onto this box, which is only correct if the box counts its own
+     border. Most host stylesheets reset this globally — the ones that don't would
+     otherwise leave the frame a border's worth short. */
+  box-sizing: border-box;
   display: block;
   width: 100%;
   min-height: 4rem;
@@ -67,6 +73,9 @@ code-preview .code-preview-viewport {
   margin: 0;
   overflow: hidden auto;
   border: 1px solid var(--border, #d8d8d8);
+  /* No bottom border: the code block below brings its own, and two adjacent 1px
+     borders read as one thick misaligned line rather than a divider. */
+  border-bottom: 0;
   border-radius: var(--radius, 6px) var(--radius, 6px) 0 0;
   background: var(--bg, #fff);
 }
@@ -75,6 +84,7 @@ code-preview .code-preview-viewport {
    ratio (right for video, wrong here) would otherwise win. The transform origin is
    what makes a scaled frame line up with the wrapper's top-left corner. */
 code-preview .code-preview-frame {
+  box-sizing: border-box;
   display: block;
   width: 100%;
   aspect-ratio: auto;
@@ -85,9 +95,17 @@ code-preview .code-preview-frame {
 
 /* The preview and the code it renders read as one unit: no gap, no rounding where
    they meet. `.code-wrap` is matched too because copy-button scripts commonly wrap
-   every `pre` in one, which changes what sits next to the preview once they run. */
+   every `pre` in one, which changes what sits next to the preview once they run.
+
+   `code-preview` owns the outer spacing, so the child gets none at all — otherwise a
+   host's `pre` margin shows up twice, once inside the element and once around it.
+
+   Specificity, if a gap survives this: the selector is one type + one class, so a
+   docs theme with something like `.prose :is(figure, .code-wrap)` outranks it and its
+   margin stays. Beat it from the host with `.prose code-preview > :is(pre,
+   .code-wrap) { margin: 0 }` — a generic package cannot win that race blind. */
 code-preview > :is(pre, .code-wrap) {
-  margin-top: 0;
+  margin: 0;
 }
 
 code-preview > pre,

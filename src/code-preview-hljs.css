@@ -1,0 +1,134 @@
+/* highlight.js token colours, light and dark, self-hosted — no CDN theme needed.
+
+   Optional and deliberately a separate file: a docs site that already ships a syntax
+   theme should not have it overridden by this one. Load it only if the code blocks
+   would otherwise be monochrome:
+
+     <link rel="stylesheet" href="node_modules/code-preview-element/dist/code-preview-hljs.css">
+
+   Scoped to `pre code` rather than bare `.hljs-*` so it cannot reach code blocks
+   elsewhere on the page that a host theme owns. Dark follows the OS by default and
+   the host's [data-theme] when it sets one — the same attribute the element mirrors
+   into its preview frames. */
+
+pre code .hljs-comment,
+pre code .hljs-quote {
+  color: var(--fg-muted, #656d76);
+  font-style: italic;
+}
+
+pre code .hljs-keyword,
+pre code .hljs-selector-tag,
+pre code .hljs-literal,
+pre code .hljs-section,
+pre code .hljs-name { color: #cc5de8; }
+
+pre code .hljs-string,
+pre code .hljs-attr,
+pre code .hljs-template-tag,
+pre code .hljs-addition { color: #2b8a3e; }
+
+pre code .hljs-number,
+pre code .hljs-symbol,
+pre code .hljs-bullet { color: #f76707; }
+
+pre code .hljs-title,
+pre code .hljs-title.function_,
+pre code .hljs-selector-id,
+pre code .hljs-selector-class { color: #1c7ed6; }
+
+pre code .hljs-type,
+pre code .hljs-class .hljs-title,
+pre code .hljs-built_in { color: #a67500; }
+
+pre code .hljs-attribute,
+pre code .hljs-variable,
+pre code .hljs-tag { color: #e8590c; }
+
+pre code .hljs-meta,
+pre code .hljs-deletion { color: var(--fg-muted, #656d76); }
+
+@media (prefers-color-scheme: dark) {
+  pre code .hljs-keyword,
+  pre code .hljs-selector-tag,
+  pre code .hljs-literal,
+  pre code .hljs-section,
+  pre code .hljs-name { color: #e599f7; }
+
+  pre code .hljs-string,
+  pre code .hljs-attr,
+  pre code .hljs-template-tag,
+  pre code .hljs-addition { color: #69db7c; }
+
+  pre code .hljs-number,
+  pre code .hljs-symbol,
+  pre code .hljs-bullet { color: #ffa94d; }
+
+  pre code .hljs-title,
+  pre code .hljs-title.function_,
+  pre code .hljs-selector-id,
+  pre code .hljs-selector-class { color: #74c0fc; }
+
+  pre code .hljs-type,
+  pre code .hljs-built_in { color: #ffd43b; }
+
+  pre code .hljs-attribute,
+  pre code .hljs-variable,
+  pre code .hljs-tag { color: #ffa94d; }
+}
+
+/* An explicit theme on the host wins over the OS preference, in both directions. */
+:root[data-theme="dark"] pre code .hljs-keyword,
+:root[data-theme="dark"] pre code .hljs-selector-tag,
+:root[data-theme="dark"] pre code .hljs-literal,
+:root[data-theme="dark"] pre code .hljs-section,
+:root[data-theme="dark"] pre code .hljs-name { color: #e599f7; }
+
+:root[data-theme="dark"] pre code .hljs-string,
+:root[data-theme="dark"] pre code .hljs-attr,
+:root[data-theme="dark"] pre code .hljs-template-tag,
+:root[data-theme="dark"] pre code .hljs-addition { color: #69db7c; }
+
+:root[data-theme="dark"] pre code .hljs-number,
+:root[data-theme="dark"] pre code .hljs-symbol,
+:root[data-theme="dark"] pre code .hljs-bullet { color: #ffa94d; }
+
+:root[data-theme="dark"] pre code .hljs-title,
+:root[data-theme="dark"] pre code .hljs-title.function_,
+:root[data-theme="dark"] pre code .hljs-selector-id,
+:root[data-theme="dark"] pre code .hljs-selector-class { color: #74c0fc; }
+
+:root[data-theme="dark"] pre code .hljs-type,
+:root[data-theme="dark"] pre code .hljs-built_in { color: #ffd43b; }
+
+:root[data-theme="dark"] pre code .hljs-attribute,
+:root[data-theme="dark"] pre code .hljs-variable,
+:root[data-theme="dark"] pre code .hljs-tag { color: #ffa94d; }
+
+:root[data-theme="light"] pre code .hljs-keyword,
+:root[data-theme="light"] pre code .hljs-selector-tag,
+:root[data-theme="light"] pre code .hljs-literal,
+:root[data-theme="light"] pre code .hljs-section,
+:root[data-theme="light"] pre code .hljs-name { color: #cc5de8; }
+
+:root[data-theme="light"] pre code .hljs-string,
+:root[data-theme="light"] pre code .hljs-attr,
+:root[data-theme="light"] pre code .hljs-template-tag,
+:root[data-theme="light"] pre code .hljs-addition { color: #2b8a3e; }
+
+:root[data-theme="light"] pre code .hljs-number,
+:root[data-theme="light"] pre code .hljs-symbol,
+:root[data-theme="light"] pre code .hljs-bullet { color: #f76707; }
+
+:root[data-theme="light"] pre code .hljs-title,
+:root[data-theme="light"] pre code .hljs-title.function_,
+:root[data-theme="light"] pre code .hljs-selector-id,
+:root[data-theme="light"] pre code .hljs-selector-class { color: #1c7ed6; }
+
+:root[data-theme="light"] pre code .hljs-type,
+:root[data-theme="light"] pre code .hljs-class .hljs-title,
+:root[data-theme="light"] pre code .hljs-built_in { color: #a67500; }
+
+:root[data-theme="light"] pre code .hljs-attribute,
+:root[data-theme="light"] pre code .hljs-variable,
+:root[data-theme="light"] pre code .hljs-tag { color: #e8590c; }

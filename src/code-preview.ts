@@ -139,7 +139,12 @@ export class CodePreview extends HTMLElement {
   connectedCallback(): void {
     // Moving the element in the dom re-runs this; build once.
     if (this.frame) return
-    const code = this.querySelector<HTMLElement>('pre code, pre')
+    // Two queries, not one selector list: a list returns the first match in *tree*
+    // order, so `'pre code, pre'` hands back the `<pre>` every time — which then gets
+    // hljs run over markup containing a `<code>` child, and has its classes
+    // overwritten. The `<code>` is what holds the sample; the `<pre>` is the fallback
+    // for markup that has none.
+    const code = this.querySelector<HTMLElement>('pre > code') ?? this.querySelector<HTMLElement>('pre')
     if (!code) return
     this.code = code
     this.language = /language-([\w-]+)/.exec(code.className)?.[1]?.toLowerCase() ?? 'html'
@@ -176,6 +181,13 @@ export class CodePreview extends HTMLElement {
     if (widths.length) this.buildBar(widths)
 
     if (!this.hasAttribute('no-edit') && EDITABLE.test(this.language)) this.attachEditor()
+    // A block that arrived plain — hand-written markup rather than a fence some site
+    // generator already highlighted — gets highlighted here. Blocks that came
+    // pre-highlighted keep exactly what they have: re-running hljs is work for an
+    // identical result, and any version skew would show up as the whole block
+    // reshuffling on load. Last, and after the preview is already wired, so a
+    // highlighting problem costs colour and not the demo.
+    if (!code.querySelector('span')) this.highlight(code)
   }
 
   attributeChangedCallback(name: string, before: string | null, after: string | null): void {
@@ -321,11 +333,12 @@ export class CodePreview extends HTMLElement {
     // The frame gets the sample's full unscaled height, so nothing scrolls inside it;
     // the wrapper gets the scaled height, and caps it.
     const content = Math.ceil(Math.max(doc.documentElement.getBoundingClientRect().height, doc.body?.scrollHeight ?? 0))
-    // A wrapper height is the *border* box wherever box-sizing is reset, which is most
-    // stylesheets, while what was just measured is the space inside it. Without the
-    // difference added back every preview is short by its own border and shows a
-    // scrollbar with two pixels of travel. Measured rather than hardcoded, so it
-    // survives whatever border or padding the stylesheet puts on the wrapper.
+    // The wrapper's height is its border box — the stylesheet sets box-sizing itself
+    // rather than trusting the host to — while what was just measured is the space
+    // inside it. Without the difference added back every preview is short by its own
+    // border and shows a scrollbar with a pixel or two of travel. Measured rather than
+    // hardcoded, so it survives whatever border or padding the stylesheet ends up
+    // putting on the wrapper.
     const chrome = viewport.offsetHeight - viewport.clientHeight
     const height = `${Math.ceil(content * scale) + chrome}px`
 
@@ -352,15 +365,18 @@ export class CodePreview extends HTMLElement {
   private attachEditor(): void {
     const code = this.code
     if (!code) return
-    this.jar = CodeJar(code, (el) => {
-      // hljs skips an element it has already highlighted, and its own pass drops
-      // the language class the next one needs.
-      delete el.dataset.highlighted
-      el.className = `hljs language-${this.language}`
-      hljs.highlightElement(el)
-    }, { tab: '  ' })
+    this.jar = CodeJar(code, (element) => this.highlight(element), { tab: '  ' })
     this.jar.onUpdate((src) => this.schedule(src))
     this.classList.add('is-editable')
+  }
+
+  // Shared by the first paint and every keystroke after it. hljs skips an element it
+  // has already highlighted, and its own pass drops the language class the next one
+  // needs, so both are restored each time.
+  private highlight(element: HTMLElement): void {
+    delete element.dataset.highlighted
+    element.className = `hljs language-${this.language}`
+    hljs.highlightElement(element)
   }
 }
 

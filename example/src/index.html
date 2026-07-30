@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>&lt;code-preview&gt;</title>
-  <link rel="stylesheet" href="code-preview.css">
+  <link rel="stylesheet" href="code-preview.min.css">
+  <link rel="stylesheet" href="code-preview-hljs.min.css">
   <style>
     /* The host page. Also the demo of theming by custom property: the element's
        stylesheet only ever reaches for these with a fallback. */
@@ -47,9 +48,9 @@
 
     button.theme { font: inherit; padding: 0.25rem 0.75rem; }
 
-    /* Stand-in for a syntax theme. The real thing comes from whatever highlighted
-       the fence at build time — this page hand-writes its samples. */
-    .hljs-tag { color: var(--fg-muted); }
+    /* Syntax colours come from code-preview-hljs.css. This page hand-writes its
+       samples as plain markup, so the element highlights them on upgrade — no build
+       step involved. */
   </style>
 </head>
 <body>
@@ -61,14 +62,14 @@
   <h2>A sample with no assets</h2>
   <p>Renders in a bare document, so it shows the browser's own defaults.</p>
   <code-preview>
-    <pre><code class="hljs language-html">&lt;p&gt;Hello from inside the frame.&lt;/p&gt;
+    <pre><code class="language-html">&lt;p&gt;Hello from inside the frame.&lt;/p&gt;
 &lt;p&gt;&lt;small&gt;Try editing this.&lt;/small&gt;&lt;/p&gt;</code></pre>
   </code-preview>
 
   <h2>A sample with a stylesheet</h2>
   <p><code>css</code> takes whitespace-separated urls, resolved against this page.</p>
   <code-preview css="sample.css" theme-attribute="data-theme">
-    <pre><code class="hljs language-html">&lt;div class="card"&gt;
+    <pre><code class="language-html">&lt;div class="card"&gt;
   &lt;h3&gt;Card&lt;/h3&gt;
   &lt;p&gt;Styled by sample.css, which follows the page's theme.&lt;/p&gt;
 &lt;/div&gt;</code></pre>
@@ -81,7 +82,7 @@
     to fit, so the wider breakpoints apply. <code>viewport-widths</code> adds the
     buttons — or narrow your window and watch it fall back on its own.</p>
   <code-preview css="sample.css" theme-attribute="data-theme" viewport-width="1024" viewport-widths="375 768 1024">
-    <pre><code class="hljs language-html">&lt;div class="cols"&gt;
+    <pre><code class="language-html">&lt;div class="cols"&gt;
   &lt;div class="card"&gt;&lt;h3&gt;One&lt;/h3&gt;&lt;p&gt;Three across above 900px.&lt;/p&gt;&lt;/div&gt;
   &lt;div class="card"&gt;&lt;h3&gt;Two&lt;/h3&gt;&lt;p&gt;Two across above 600px.&lt;/p&gt;&lt;/div&gt;
   &lt;div class="card"&gt;&lt;h3&gt;Three&lt;/h3&gt;&lt;p&gt;Stacked below that.&lt;/p&gt;&lt;/div&gt;
@@ -92,7 +93,7 @@
   <p>Inline <code>&lt;script&gt;</code> means every edit rebuilds the frame rather than
     patching it — <code>innerHTML</code> never executes scripts it inserts.</p>
   <code-preview reload>
-    <pre><code class="hljs language-html">&lt;button id="go"&gt;Click me&lt;/button&gt;
+    <pre><code class="language-html">&lt;button id="go"&gt;Click me&lt;/button&gt;
 &lt;p id="out"&gt;&lt;/p&gt;
 &lt;script&gt;
   let n = 0
@@ -103,7 +104,7 @@
   <h2>Read-only</h2>
   <p><code>no-edit</code> renders the preview and leaves the code alone.</p>
   <code-preview no-edit>
-    <pre><code class="hljs language-html">&lt;p&gt;You cannot type in this one.&lt;/p&gt;</code></pre>
+    <pre><code class="language-html">&lt;p&gt;You cannot type in this one.&lt;/p&gt;</code></pre>
   </code-preview>
 
   <script>

@@ -13,9 +13,28 @@
       }
     }
   ],
+  "styles": [
+    {
+      "//": "Plain css in, plain css out — the point is a shipped dist/ that a consumer can link without a build of their own.",
+      "in": "src/code-preview.css",
+      "out": "dist/code-preview.css",
+      "options": { "minify": true, "justMinified": false }
+    },
+    {
+      "//": "Optional syntax colours, kept separate so a site with its own theme is not overridden.",
+      "in": "src/code-preview-hljs.css",
+      "out": "dist/code-preview-hljs.css",
+      "options": { "minify": true, "justMinified": false }
+    }
+  ],
   "copy": [
     {
-      "in": ["dist/code-preview.min.js", "src/code-preview.css", "example/src/sample.css"],
+      "in": [
+        "dist/code-preview.min.js",
+        "dist/code-preview.min.css",
+        "dist/code-preview-hljs.min.css",
+        "example/src/sample.css"
+      ],
       "out": "example/dist"
     }
   ],

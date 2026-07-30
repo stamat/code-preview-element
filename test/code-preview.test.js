@@ -93,10 +93,13 @@ test('a sample that brings its own document owns its head', () => {
 })
 
 // Boots the element in a jsdom page and hands back what the tests poke at.
-function mount (attributes = 'css="../../dist/lib.css" theme-attribute="data-color-scheme" no-edit') {
+function mount (
+  attributes = 'css="../../dist/lib.css" theme-attribute="data-color-scheme" no-edit',
+  block = '<pre><code class="hljs language-html">&lt;button class="btn"&gt;Hi&lt;/button&gt;</code></pre>'
+) {
   const page = new JSDOM(`<!DOCTYPE html><html data-theme="dark"><body>
     <code-preview ${attributes}>
-      <pre><code class="hljs language-html">&lt;button class="btn"&gt;Hi&lt;/button&gt;</code></pre>
+      ${block}
     </code-preview>
   </body></html>`, { runScripts: 'dangerously' })
 
@@ -121,6 +124,20 @@ test('the element renders through srcdoc, not into about:blank', () => {
 
   // no-edit leaves the block alone — CodeJar sets contenteditable when it takes over.
   assert.equal(element.querySelector('code').getAttribute('contenteditable'), null)
+})
+
+test('a plain block gets highlighted, a pre-highlighted one is left alone', () => {
+  // Hand-written markup: no spans, so the element runs hljs over it.
+  const plain = mount('no-edit', '<pre><code class="language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>')
+  const code = plain.querySelector('code')
+  assert.ok(code.querySelector('.hljs-tag'), 'a plain sample was left monochrome')
+  assert.match(code.className, /\bhljs\b/)
+  assert.equal(code.textContent, '<b>hi</b>', 'highlighting must not alter the sample itself')
+
+  // Already highlighted by a site generator: re-running hljs would be work for an
+  // identical result, and any version skew would reshuffle the block on load.
+  const done = mount('no-edit', '<pre><code class="hljs language-html"><span class="hljs-tag">KEEP</span></code></pre>')
+  assert.equal(done.querySelector('code').innerHTML, '<span class="hljs-tag">KEEP</span>')
 })
 
 test('no width switcher unless one is asked for', () => {

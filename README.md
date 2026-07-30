@@ -6,13 +6,19 @@ applied as you type. The sample is the only source of truth, so a documented exa
 and what it actually does cannot drift.
 
 ```html
-<link rel="stylesheet" href="node_modules/code-preview-element/src/code-preview.css">
+<link rel="stylesheet" href="node_modules/code-preview-element/dist/code-preview.min.css">
 <script src="node_modules/code-preview-element/dist/code-preview.min.js"></script>
 
 <code-preview css="dist/my-library.css">
-  <pre><code class="hljs language-html">&lt;button class="btn"&gt;Hi&lt;/button&gt;</code></pre>
+  <pre><code class="language-html">&lt;button class="btn"&gt;Hi&lt;/button&gt;</code></pre>
 </code-preview>
 ```
+
+The sample can arrive plain, as above — the element highlights it on upgrade. A block
+that is already highlighted (a fence a site generator ran hljs over at build time) is
+left exactly as it is: re-running hljs would be work for an identical result, and any
+version skew between build and runtime shows up as the whole block reshuffling on
+load.
 
 An iframe, rather than markup inlined into the page, because a docs page cannot host
 a sample of a CSS library safely: tag-level rules for `html`, `body` or `*` restyle
@@ -116,10 +122,31 @@ script that already ran does not re-run against markup replacing what it initial
 
 ## Styling
 
-`src/code-preview.css` is the minimum the element needs plus as little taste as
-possible. Every colour is a custom property with a fallback — a host page that
-already defines `--border`, `--bg`, `--accent`, `--fg-muted`, `--radius` or
-`--font-mono` gets its own look for free.
+Two stylesheets ship in `dist`, both plain CSS, minified and not:
+
+| File | |
+|---|---|
+| `dist/code-preview.css` | required — the layout the element needs to work |
+| `dist/code-preview-hljs.css` | optional — highlight.js token colours, light and dark |
+
+The second is separate on purpose: a docs site that already ships a syntax theme
+should not have it overridden. Link it only if the code blocks would otherwise be
+monochrome. It is scoped to `pre code`, so it cannot reach code blocks elsewhere on
+the page.
+
+The required sheet is the minimum plus as little taste as possible. Every colour is a
+custom property with a fallback — a host page that already defines `--border`, `--bg`,
+`--accent`, `--fg-muted`, `--radius` or `--font-mono` gets its own look for free.
+
+The element and the code block are meant to read as one object, so the preview has no
+bottom border (the code block below brings its own) and the block inside gets no
+margin. If a gap survives anyway, a host theme is outranking the package: its
+`.prose :is(figure, .code-wrap)` is two classes against the package's one class and
+one type. Win it back from the host side:
+
+```css
+.prose code-preview > :is(pre, .code-wrap) { margin: 0; }
+```
 
 `max-height` on the frame is load-bearing, not taste: the element sizes the frame
 from its content, so a sample measured in viewport units would grow the frame, which
