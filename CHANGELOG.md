@@ -15,6 +15,8 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-31
+
 ### Added
 
 - **An options panel**, as a third bundle you opt into —
@@ -106,5 +108,6 @@ Initial release.
 
 - TypeScript declarations for both builds.
 
-[Unreleased]: https://github.com/stamat/code-preview-element/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/stamat/code-preview-element/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/stamat/code-preview-element/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/stamat/code-preview-element/releases/tag/v0.1.0
