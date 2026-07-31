@@ -47,7 +47,7 @@ let detailTokens
 // The three bundles: the default, which expects the page to have brought a highlighter,
 // the one with highlight.js inside it, and the opt-in options panel that goes on top of
 // either. Most of what follows is about the element rather than any build, and runs
-// against `bundled` because it can assert colour.
+// against `bundled` because it can assert color.
 let plain
 let bundled
 let options
@@ -209,10 +209,10 @@ test('a plain block gets highlighted, a pre-highlighted one is left alone', () =
 // The default bundle, which carries no highlighter. It is the one most people load, so
 // both outcomes of a hook looked up at runtime have to be covered: a page that brought
 // hljs, and a page that did not.
-const UNCOLOURED = '<pre><code class="language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>'
+const UNcolorED = '<pre><code class="language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>'
 
 test('the default build previews with no highlighter at all', () => {
-  const element = mount('no-edit', UNCOLOURED, { script: plain })
+  const element = mount('no-edit', UNcolorED, { script: plain })
 
   assert.ok(element.querySelector('iframe'), 'the element did not upgrade without hljs')
   assert.match(element.querySelector('iframe').getAttribute('srcdoc') ?? '', /<body><b>hi<\/b><\/body>/)
@@ -222,7 +222,7 @@ test('the default build previews with no highlighter at all', () => {
 
 test('the default build highlights through the page global', () => {
   const seen = []
-  const element = mount('no-edit', UNCOLOURED, {
+  const element = mount('no-edit', UNcolorED, {
     script: plain,
     setup: (window) => {
       window.hljs = { highlightElement: (el) => seen.push(el.className) }
@@ -482,7 +482,7 @@ test('a manifest entry decides its own control', () => {
   // A css property is told apart by its own name, and a Houdini union is a select too.
   assert.deepEqual(controlFor({ name: '--weight', syntax: 'normal | 500 | 700' }).options, ['normal', '500', '700'])
   // `<color>` is a *text* field plus a swatch, never `<input type="color">` — a native
-  // colour input cannot hold `currentcolor`, `Canvas` or `color-mix(…)`.
+  // color input cannot hold `currentcolor`, `Canvas` or `color-mix(…)`.
   assert.equal(kind({ name: '--bg', syntax: '<color>' }), 'color')
   assert.equal(kind({ name: '--bg', type: { text: '<color>' } }), 'color', 'the analyzer writes the syntax into type.text')
   assert.equal(kind({ name: '--radius', syntax: '<length>' }), 'text')
@@ -503,7 +503,7 @@ test('a manifest entry decides its own control', () => {
 // opaque `#rrggbb`, or an `#rrggbbaa` where the engine takes the `alpha` attribute, and
 // nothing else: everything it cannot hold either becomes the crossed-out square
 // (`transparent`) or leaves the swatch where it was.
-test('the swatch only ever shows a colour a picker can actually hold', () => {
+test('the swatch only ever shows a color a picker can actually hold', () => {
   assert.equal(swatchFor('rgb(124, 92, 255)'), '#7c5cff')
   assert.equal(swatchFor('rgba(0, 0, 0, 0.5)'), '#000000')
   // The modern serialisation, and percentages in either position.
@@ -526,9 +526,9 @@ test('the swatch only ever shows a colour a picker can actually hold', () => {
   assert.equal(swatchFor('rgb(124, 92, 255)', true), '#7c5cff')
   assert.equal(swatchFor('rgba(0, 0, 0, 0)', true), 'transparent')
 
-  // Anything else is "leave it alone" — a wide-gamut colour, an unresolved keyword, an
+  // Anything else is "leave it alone" — a wide-gamut color, an unresolved keyword, an
   // engine that answered with something unexpected. An alpha that did not parse is in
-  // that set too, not an opaque colour.
+  // that set too, not an opaque color.
   assert.equal(swatchFor('color(display-p3 1 0 0)'), null)
   assert.equal(swatchFor('currentcolor'), null)
   assert.equal(swatchFor(''), null)
@@ -793,8 +793,11 @@ async function mountFilled(attributes = 'manifest="m.json" tab="options" no-edit
 
 test('the controls are generated from the manifest, grouped by where they write', async() => {
   const element = await mountFilled()
-  const groups = [...element.querySelectorAll('.code-preview-group legend')].map((one) => one.textContent)
-  assert.deepEqual(groups, ['Attributes', 'Custom properties', 'Events'])
+  const groups = [...element.querySelectorAll('.code-preview-group')]
+  assert.deepEqual(groups.map((one) => one.querySelector('summary').textContent),
+    ['Attributes', 'Custom properties', 'Events'])
+  // Collapsible, and open on arrival — a panel nobody touches reads as it always did.
+  assert.deepEqual(groups.map((one) => one.open), [true, true, true])
 
   const knobs = [...element.querySelectorAll('.code-preview-knob')]
   assert.deepEqual(knobs.map((knob) => knob.querySelector('.code-preview-knob-name').textContent),
@@ -804,8 +807,8 @@ test('the controls are generated from the manifest, grouped by where they write'
   assert.equal(knobs[0].querySelector('input').type, 'text')
   assert.deepEqual([...knobs[1].querySelectorAll('option')].map((o) => o.value), ['', 'quiet', 'loud'])
   assert.equal(knobs[2].querySelector('input').type, 'checkbox')
-  // A colour is a text field plus a swatch, never a native colour input on its own.
-  assert.equal(knobs[3].querySelector('.code-preview-colour > input').type, 'text')
+  // A color is a text field plus a swatch, never a native color input on its own.
+  assert.equal(knobs[3].querySelector('.code-preview-color > input').type, 'text')
   assert.equal(knobs[3].querySelector('.code-preview-swatch').type, 'color')
   assert.deepEqual([...knobs[5].querySelectorAll('option')].map((o) => o.value), ['', 'normal', '600'])
 
@@ -824,7 +827,7 @@ test('a custom property knob writes a rule and never touches the sample', async(
   const element = await mountFilled()
   const source = element.source
   const rule = element.querySelector('.code-preview-rule')
-  const [colour, radius] = [...element.querySelectorAll('.code-preview-knob')].slice(3)
+  const [color, radius] = [...element.querySelectorAll('.code-preview-knob')].slice(3)
     .map((knob) => knob.querySelector('input, select'))
 
   // Untouched: no rule at all, and nothing rendered to copy.
@@ -832,8 +835,8 @@ test('a custom property knob writes a rule and never touches the sample', async(
   // Not a `pre`, or a copy-button script wraps it and hangs a button over the panel.
   assert.notEqual(rule.tagName, 'PRE')
 
-  colour.value = '#7c5cff'
-  colour.dispatchEvent(new element.ownerDocument.defaultView.Event('input'))
+  color.value = '#7c5cff'
+  color.dispatchEvent(new element.ownerDocument.defaultView.Event('input'))
   radius.value = '999px'
   radius.dispatchEvent(new element.ownerDocument.defaultView.Event('input'))
 
@@ -933,14 +936,8 @@ test('an event fired inside the frame is counted, whichever tab is open', async(
   assert.equal(toast[0].textContent, 'demo-badge-click')
   assert.equal(toast[0].parentElement.className, 'code-preview-viewport', 'the toast belongs over the sample, not over the toolbar')
 
-  // Which is exactly when the count is invisible, so the tab strip says one arrived —
-  // until the panel it landed in is opened.
-  assert.equal(element.dataset.eventFired, '')
-  element.querySelectorAll('[role="tab"]')[1].click()
-  assert.equal(element.dataset.eventFired, undefined)
-
   // The detail is spans, not one string: `label` is a key and `"New"` is a string, and a
-  // page with a syntax theme colours both by the names hljs would have given them.
+  // page with a syntax theme colors both by the names hljs would have given them.
   assert.deepEqual([...detail.querySelectorAll('span')].map((span) => [span.className, span.textContent]),
     [['hljs-attr', 'label'], ['hljs-string', '"New"']])
 })

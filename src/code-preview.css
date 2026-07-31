@@ -1,5 +1,5 @@
 /* <code-preview> — the styles the element needs to work, and as little taste as
-   possible on top. Every colour is a custom property with a fallback, so a host
+   possible on top. Every color is a custom property with a fallback, so a host
    page that already defines --border, --bg, --accent, --fg-muted or --font-mono
    gets its own look for free.
 
@@ -136,24 +136,25 @@ code-preview .code-preview-tab[aria-selected="true"] {
   color: var(--fg, inherit);
 }
 
-/* An event fired while the reader was on the code tab: the count changed in a pane nobody
-   can see, and a live region inside a hidden pane announces nothing either. The tab that
-   holds it says so until it is opened. A dot rather than a toast — a floating box would
-   cover the sample, which is the thing the event came out of. */
-code-preview[data-event-fired] .code-preview-tab[data-tab="options"]::after {
-  content: "";
-  display: inline-block;
-  inline-size: 0.375rem;
-  block-size: 0.375rem;
-  margin-inline-start: 0.3em;
-  border-radius: 50%;
-  background: var(--accent, #0969da);
-  vertical-align: 0.05em;
-}
-
-code-preview :is(.code-preview-width, .code-preview-tab):focus-visible {
+/* The group summaries are in here too: a UA gives one a focus ring in some engines and
+   not others, and every other thing in this element that takes focus shows the same one. */
+code-preview :is(.code-preview-width, .code-preview-tab, .code-preview-group > summary):focus-visible {
   outline: 2px solid var(--accent, #0969da);
   outline-offset: 1px;
+}
+
+/* The same three, hovered. A wash rather than a color swap alone, because the color is
+   already how the tabs say which one is selected — a hover that borrowed it would make an
+   unselected tab under the cursor look like the selected one. Tinted from --fg-muted, so
+   it lands right in a dark theme without this sheet knowing it is in one.
+
+   Behind `hover: hover`, since a tap on a touch screen leaves the state stuck on until
+   something else is tapped, and here that is a group summary the reader has just closed. */
+@media (hover: hover) {
+  code-preview :is(.code-preview-width, .code-preview-tab, .code-preview-group > summary):hover {
+    background: color-mix(in srgb, var(--fg-muted, #656d76) 10%, transparent);
+    color: var(--fg, inherit);
+  }
 }
 
 /* The wrapper owns the border, the radius and the height cap, because the frame
@@ -328,25 +329,32 @@ code-preview .code-preview-options[hidden] {
   display: none;
 }
 
-/* A fieldset is the native way to name a set of controls, so no ARIA to get wrong — but
-   its default border and padding are a look nobody asked for. */
-code-preview .code-preview-group {
-  min-inline-size: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
+/* A `<details>` names its set of controls through its `<summary>` the way a fieldset did
+   through a legend, and brings a disclosure with it — three groups and the rule below them
+   is more panel than a reader wants at once. Nothing to reset: unlike a fieldset it arrives
+   with no border, padding or margin of its own. */
 
 /* Uppercased as a section heading rather than as a label: the knob names below are
    verbatim attribute and custom-property names, where case is meaning, so the one line in
    the group that is prose is the one that can carry the treatment. Letter-spacing because
-   capitals set at 0.75rem in a monospace face otherwise run together. */
-code-preview .code-preview-group > legend {
-  padding: 0;
+   capitals set at 0.75rem in a monospace face otherwise run together.
+
+   Double-clicking a summary toggles it twice and selects the word in between, so the text
+   is not selectable — the name is repeated verbatim on the rows below, where it is.
+
+   Padding for the hover wash — a tint needs a box to be, not a stripe cut to the text —
+   and an equal negative inline margin so the name still starts at the panel's edge, which
+   is the same trade the event rows make one group below. */
+code-preview .code-preview-group > summary {
+  padding: 0.125rem 0.375rem;
+  margin-inline: -0.375rem;
+  border-radius: calc(var(--radius, 6px) / 2);
   color: var(--fg-muted, #656d76);
   font: 0.75rem/1.5 var(--font-mono, ui-monospace, monospace);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
 }
 
 /* Two columns for the whole group rather than per row: a row of its own would put each
@@ -451,7 +459,7 @@ code-preview .code-preview-knob :is(input, select) {
 /* The caret, drawn here rather than left to the platform: the native one sits hard against
    the field's right edge, which on a control with 0.375rem of padding on the other side
    reads as a caret that has fallen off. Two gradients making one triangle — no data uri to
-   recolour per theme, no extra element, and it takes `currentColor` for free. The
+   recolor per theme, no extra element, and it takes `currentColor` for free. The
    padding-inline-end is the caret's 10px plus that same 0.375rem either side of it. */
 code-preview .code-preview-knob select {
   appearance: none;
@@ -476,30 +484,30 @@ code-preview .code-preview-knob input[type="checkbox"] {
 }
 
 /* The picker sits beside the text field, never instead of it: `currentcolor`, `Canvas`
-   and `color-mix(…)` are all real defaults, and a native colour input can hold none of
+   and `color-mix(…)` are all real defaults, and a native color input can hold none of
    them. It writes hex in; the field is what is read. */
-code-preview .code-preview-colour {
+code-preview .code-preview-color {
   display: flex;
   min-inline-size: 0;
   gap: 0.375rem;
   align-items: center;
 }
 
-code-preview .code-preview-colour > input[type="text"] {
+code-preview .code-preview-color > input[type="text"] {
   flex: 1 1 auto;
 }
 
 /* Two classes deep on purpose: the generic control rule above is a type selector deeper
    than a single class would be, and its padding on a control whose whole face is the
-   colour would be chrome around the value. `flex: 0 0 auto` because the field beside it
+   color would be chrome around the value. `flex: 0 0 auto` because the field beside it
    grows — a shrinking swatch would be the part that pays for a long `color-mix(…)`. */
 code-preview .code-preview-knob .code-preview-swatch {
   flex: 0 0 auto;
   inline-size: 1.75rem;
   block-size: 1.75rem;
   padding: 0;
-  /* The button is the colour. Every engine draws the value as a square inset inside the
-     control's own padding and border, which at 1.75rem leaves more chrome than colour —
+  /* The button is the color. Every engine draws the value as a square inset inside the
+     control's own padding and border, which at 1.75rem leaves more chrome than color —
      and the chrome is this stylesheet's border, already drawn around it. `overflow` is
      what makes the fill follow the corner radius, since the square is a shadow child. */
   overflow: hidden;
@@ -523,12 +531,12 @@ code-preview .code-preview-swatch::-moz-color-swatch {
   border-radius: 0;
 }
 
-/* There is no transparent in a colour picker. `<input type="color">` holds an opaque
+/* There is no transparent in a color picker. `<input type="color">` holds an opaque
    `#rrggbb` and nothing else — the newer `alpha` attribute buys `#rrggbbaa`, and still not
    the `transparent` keyword, which is a real default in a themeable library. So the field
    says `transparent`, as it says `currentcolor` and `color-mix(…)`, and the swatch says it
    the way a mac does: a thin red cross over a black square, rather than showing black and
-   claiming a colour the sample does not have.
+   claiming a color the sample does not have.
 
    Painted on the input itself and revealed by clearing the shadow square's own background,
    so the cross is written once instead of once per vendor pseudo-element. `!important` is
@@ -551,9 +559,9 @@ code-preview .code-preview-swatch.is-transparent::-moz-color-swatch {
 }
 
 /* An event the sample fires, and how many times it has since the frame last loaded. Not a
-   control, so it reads as the value it is — and the `detail` beside it is code, coloured by
+   control, so it reads as the value it is — and the `detail` beside it is code, colored by
    whichever syntax theme the page has, so only the parts nothing has claimed take the muted
-   colour. */
+   color. */
 code-preview :is(.code-preview-event-count, .code-preview-event-detail) {
   color: var(--fg-muted, #656d76);
   font: 0.75rem/1.6 var(--font-mono, ui-monospace, monospace);

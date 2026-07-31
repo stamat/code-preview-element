@@ -48,7 +48,7 @@
       "options": { "minify": true, "justMinified": false }
     },
     {
-      "//": "Optional syntax colours, kept separate so a site with its own theme is not overridden.",
+      "//": "Optional syntax colors, kept separate so a site with its own theme is not overridden.",
       "in": "src/code-preview-hljs.css",
       "out": "dist/code-preview-hljs.css",
       "options": { "minify": true, "justMinified": false }
@@ -56,7 +56,7 @@
   ],
   "copy": [
     {
-      "//": "The site loads no highlighter of its own, so it takes the bundle that brings one. No code-preview-hljs.css either — the docs theme colours the tokens, which is the case the separate stylesheet exists to allow.",
+      "//": "The site loads no highlighter of its own, so it takes the bundle that brings one. No code-preview-hljs.css either — the docs theme colors the tokens, which is the case the separate stylesheet exists to allow.",
       "in": [
         "dist/code-preview-hljs.min.js",
         "dist/code-preview-options.min.js",
@@ -88,6 +88,8 @@
       "lang": "en",
       "url": "https://stamat.github.io/code-preview-element",
       "repo": "https://github.com/stamat/code-preview-element",
+      "//jsonld": "The prose layout emits the jsonld filter's block; this makes it TechArticle rather than the auto-detected WebPage, which is what a docs page is.",
+      "jsonld": { "@type": "TechArticle" },
       "iconLinks": [
         { "title": "npm", "url": "https://www.npmjs.com/package/code-preview-element", "icon": "npm" }
       ]

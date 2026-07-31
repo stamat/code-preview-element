@@ -100,7 +100,7 @@ export interface Manifest {
 // A `<color>` syntax, including the multipliers Houdini allows on it.
 const COLOR_SYNTAX = /^<color>[+#]?$/
 
-// Nothing exhaustive — a named colour is unrecognisable — but it catches every default
+// Nothing exhaustive — a named color is unrecognisable — but it catches every default
 // the library this was written against actually uses.
 const COLOR_VALUE = /^(#|rgba?\(|hsla?\(|oklch\(|lab\(|color(-mix)?\(|currentcolor\b|transparent\b|canvas(text)?\b|highlight(text)?\b)/i
 
@@ -175,21 +175,21 @@ export function cssRule(tag: string, touched: Record<string, string>): string {
   return `${tag} {\n${declarations.map(([name, value]) => `  ${name}: ${value};`).join('\n')}\n}\n`
 }
 
-// What the swatch beside a colour field can show, given whatever the engine made of that
+// What the swatch beside a color field can show, given whatever the engine made of that
 // field's value. `<input type="color">` holds an opaque `#rrggbb` and nothing else — the
 // newer `alpha` attribute buys `#rrggbbaa`, still not the `transparent` keyword — so:
 //
-//   - a resolved colour comes back as the hex the picker can hold;
+//   - a resolved color comes back as the hex the picker can hold;
 //   - a fully transparent one comes back as `'transparent'`, which the stylesheet draws as
-//     the crossed-out square a mac shows for no colour, since a picker cannot;
-//   - anything else is `null`, meaning leave the swatch alone. A swatch claiming a colour
+//     the crossed-out square a mac shows for no color, since a picker cannot;
+//   - anything else is `null`, meaning leave the swatch alone. A swatch claiming a color
 //     the sample does not have is worse than one that has not moved.
 //
-// The input is a *computed* colour, which is what turns `hsl(…)`, a named colour or a
+// The input is a *computed* color, which is what turns `hsl(…)`, a named color or a
 // `color-mix(…)` into channels. Two serialisations, because a `color-mix()` in srgb comes
 // back as `color(srgb …)` in some engines and `rgb()` in others, and the demo's own default
 // is a `color-mix()`. Anything outside srgb — a real `color(display-p3 …)` — is `null`:
-// clamping a wide-gamut colour into a hex is a different colour, quietly.
+// clamping a wide-gamut color into a hex is a different color, quietly.
 export function swatchFor(color: string, withAlpha = false): string | null {
   const text = color.trim()
   const rgb = /^rgba?\(([^)]*)\)$/i.exec(text)
@@ -209,7 +209,7 @@ export function swatchFor(color: string, withAlpha = false): string | null {
   const byte = (value: number): string => Math.round(Math.min(255, Math.max(0, value))).toString(16).padStart(2, '0')
   const hex = '#' + channels.map(byte).join('')
   // A picker with `alpha` holds the eight-digit form, so a half-transparent sample stops
-  // being drawn as an opaque one. Fully opaque stays six digits — same colour, and the form
+  // being drawn as an opaque one. Fully opaque stays six digits — same color, and the form
   // every engine takes.
   return withAlpha && alpha < 1 ? hex + byte(alpha * 255) : hex
 }
@@ -220,7 +220,7 @@ export function swatchFor(color: string, withAlpha = false): string | null {
 // which serialises as `{}` at best and throws on a cycle at worst. `instanceof Element` is
 // no good either, since the event comes out of the frame and that is a different realm
 // with a different `Element`; a `localName` is what a node has in every one of them.
-// The same line in pieces, so the readout can be coloured. highlight.js's own class names
+// The same line in pieces, so the readout can be colored. highlight.js's own class names
 // rather than classes of ours: a docs page already ships a syntax theme, and the token it
 // paints green in a code block is the token this readout wants green too.
 export function detailTokens(detail: unknown): Array<{ text: string, cls?: string }> {
@@ -301,13 +301,13 @@ export function controlFor(entry: Entry): Control {
   if (union) return decided('select', union)
 
   if (css) {
-    // `<input type="color">` cannot be the colour control. `currentcolor`, `Canvas`,
+    // `<input type="color">` cannot be the color control. `currentcolor`, `Canvas`,
     // `transparent` and `color-mix(in srgb, currentcolor 22%, transparent)` are all real
-    // defaults, a native colour input can hold none of them, and swapping one out for a
+    // defaults, a native color input can hold none of them, and swapping one out for a
     // hex value is how a knob silently destroys a theme that was correct. The text field
     // is the control; the picker sits beside it and writes hex into it.
-    const colour = declared ? COLOR_SYNTAX.test(declared) : COLOR_VALUE.test(entry.default ?? '')
-    return decided(colour ? 'color' : 'text')
+    const color = declared ? COLOR_SYNTAX.test(declared) : COLOR_VALUE.test(entry.default ?? '')
+    return decided(color ? 'color' : 'text')
   }
 
   if (/^boolean$/i.test(declared)) return decided('checkbox')
@@ -544,8 +544,6 @@ export function buildOptions(host: CodePreview): void {
 
   const sync = (): void => {
     const options = (host.getAttribute('tab') ?? 'code') === 'options'
-    // Whatever fired while this pane was hidden has now been read.
-    if (options) delete host.dataset.eventFired
     for (const tab of tabs) {
       const selected = (tab.dataset.tab === 'options') === options
       tab.setAttribute('aria-selected', String(selected))
@@ -624,26 +622,33 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
   // what they resolve to. A lazy frame has usually not loaded by the time the manifest
   // has, so this cannot be answered when the control is built.
   const undocumented: Array<[HTMLInputElement, string]> = []
-  // Each colour knob's "make the swatch agree with the field", called on every edit and
+  // Each color knob's "make the swatch agree with the field", called on every edit and
   // again whenever the panel is re-read — a placeholder filled in from the frame is a
-  // colour the swatch can show too.
+  // color the swatch can show too.
   const swatches: Array<() => void> = []
 
-  // A group per kind, because the two write to different places and a reader is owed
-  // that distinction. `<fieldset>`/`<legend>` rather than a heading and an ARIA group:
-  // it is the native way to name a set of controls, and there is nothing to get wrong.
+  // A group per kind, because the three write to different places — the source, a
+  // stylesheet, nowhere — and a reader is owed that distinction.
+  //
+  // `<details open>`/`<summary>` rather than the `<fieldset>`/`<legend>` this was: three
+  // groups and the rule below them is a tall panel, and the reader of a docs page usually
+  // wants one of the three. It costs nothing to name the set either way — `<details>` maps
+  // to `group` and its `<summary>` is that group's name, exactly as a `<legend>` is — and
+  // the disclosure is the browser's, so there is no ARIA and no key handling to get wrong.
+  // Open on arrival, so a panel nobody touches reads as it always did.
   const group = (label: string, rows: HTMLElement[]): HTMLElement | undefined => {
     if (!rows.length) return undefined
-    const fieldset = document.createElement('fieldset')
-    fieldset.className = 'code-preview-group'
-    const legend = document.createElement('legend')
-    legend.textContent = label
+    const details = document.createElement('details')
+    details.className = 'code-preview-group'
+    details.open = true
+    const summary = document.createElement('summary')
+    summary.textContent = label
     const knobs = document.createElement('div')
     knobs.className = 'code-preview-knobs'
     for (const row of rows) knobs.appendChild(row)
-    fieldset.append(legend, knobs)
-    panel.appendChild(fieldset)
-    return fieldset
+    details.append(summary, knobs)
+    panel.appendChild(details)
+    return details
   }
 
   const row = (entry: Entry, control: HTMLElement): HTMLElement => {
@@ -701,9 +706,9 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
       writeRule()
     })
 
-    // The second half of the condition is narrowing rather than doubt — a colour is a text
+    // The second half of the condition is narrowing rather than doubt — a color is a text
     // field by construction — but an `x-code-preview.control` naming `select` would make it
-    // a set of colours to choose between, and a picker beside that is meaningless.
+    // a set of colors to choose between, and a picker beside that is meaningless.
     if (control.kind !== 'color' || !(input instanceof HTMLInputElement)) return row(entry, input)
 
     // The picker, beside the text field rather than instead of it. The field is what is
@@ -718,21 +723,21 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
     const canAlpha = 'alpha' in swatch
     swatch.className = 'code-preview-swatch'
     swatch.tabIndex = -1
-    swatch.setAttribute('aria-label', `Pick a colour for ${entry.name}`)
+    swatch.setAttribute('aria-label', `Pick a color for ${entry.name}`)
     swatch.addEventListener('input', () => {
       input.value = swatch.value
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
 
-    // The other direction, which the swatch fills the whole button with a colour to be
+    // The other direction, which the swatch fills the whole button with a color to be
     // worth doing: a button showing black beside a field that says `oklch(…)` is a lie the
     // size of the control. The value is resolved by setting it on the swatch and reading
-    // the computed colour back — the engine is what knows what a named colour or a
+    // the computed color back — the engine is what knows what a named color or a
     // `color-mix(…)` comes to — and an invalid value is rejected by the setter, so an
     // unfinished `#7c5` never reaches it.
     //
     // ponytail: resolved in *this* document, not the frame's, so `currentcolor` here is
-    // the panel's text colour rather than the sample's. Reading it from the frame means
+    // the panel's text color rather than the sample's. Reading it from the frame means
     // putting a probe element inside the sample, which is a mutation a library that
     // watches its own children would see — and this is a swatch.
     const showSwatch = (): void => {
@@ -747,7 +752,7 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
     input.addEventListener('input', showSwatch)
     swatches.push(showSwatch)
     const pair = document.createElement('span')
-    pair.className = 'code-preview-colour'
+    pair.className = 'code-preview-color'
     pair.append(input, swatch)
     return row(entry, pair)
   }))
@@ -786,9 +791,10 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
   }))
 
   // `aria-live` rather than `role="log"`: the role would take the group's name off its
-  // `<legend>`, and politeness is the half of it worth having. Set after the rows are in,
+  // `<summary>`, and politeness is the half of it worth having. Set after the rows are in,
   // so building the panel announces nothing — a live region only reports what changes
-  // after it exists.
+  // after it exists. A closed group announces nothing either, which is the same bargain the
+  // hidden pane already makes: the toast is what says an event fired.
   eventsGroup?.setAttribute('aria-live', 'polite')
 
   // The listeners go on the frame's *document*, in the capture phase. Capture is what
@@ -824,10 +830,6 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
           { backgroundColor: 'color-mix(in srgb, var(--accent, #0969da) 22%, transparent)' },
           { backgroundColor: 'transparent' }
         ], 450)
-        // The panel may be the pane nobody is looking at, and a live region inside a hidden
-        // one announces nothing either. The tab that holds it carries a dot until it is
-        // opened — cheaper than a toast, and it never covers the sample the event came from.
-        if ((host.getAttribute('tab') ?? 'code') !== 'options') host.dataset.eventFired = ''
         toast(host, entry.name)
       }, true)
     }

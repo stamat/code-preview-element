@@ -3,49 +3,150 @@ layout: poops-docs-theme/prose
 description: Live, editable HTML samples in an isolated iframe — the element demonstrated by the element.
 ---
 {# The page is the docs theme's `prose` layout: topbar, one article, its own tokens and
-   its own highlight.js colours. Which makes it the honest test — the element's stylesheet
+   its own highlight.js colors. Which makes it the honest test — the element's stylesheet
    only ever reaches for --border, --bg, --fg, --fg-muted, --accent, --radius and
    --font-mono with a fallback, so it takes the theme's without being told. #}
 
 {# After css/prose.min.css, so the two rules they both write — the `pre` margin and the
-   iframe's aspect-ratio — go to the element on equal specificity. #}
+   iframe's aspect-ratio — go to the element on equal specificity. The third one, the
+   `.code-wrap` margin the theme's copy button needs, it cannot win on specificity — the
+   theme yields that one itself, in `_prose.scss`. #}
 <link rel="stylesheet" href="code-preview.min.css">
 <style>
-  /* The theme wraps every `pre` in `.code-wrap` for its copy button, and gives that
-     wrapper `.prose :is(figure, .code-wrap)` — two classes, which outranks the element's
-     `code-preview > :is(pre, .code-wrap)`. Without this the preview and its code drift
-     1.75rem apart. code-preview.css documents this override; here it is in use. */
+  /* The theme's own copy of this rule ships after the version installed here, so the
+     override stays until the dependency catches up. Harmless once it has — the same
+     declaration, at the same specificity, later in the cascade. It is also the worked
+     example: any other theme with a `.code-wrap` wrapper needs exactly this line. */
   .prose code-preview > :is(pre, .code-wrap) { margin: 0; }
+
+  /* The `toc` filter's markup is styled by the theme's *docs* bundle, where this nav
+     sits in the sidebar underneath the page's own nav link — that link is its title.
+     This page links only the prose half and has no sidebar, so it needs a title of its
+     own and a break from the intro, or it reads as a stray list of links. That title is
+     the `<summary>` of the disclosure below — the filter already puts
+     `aria-label="On this page"` on the nav, so this is the same label made visible and
+     made a control, not a second one.
+
+     Bordered and rounded, which is this theme's idiom — `pre`, admonitions and tables
+     all carry the same hairline and `--radius`. What it deliberately has no fill:
+     `--bg-alt` and `--bg-code` are the same color, so a filled box here is pixel-wise
+     a code block, and this page is nothing but code blocks. An unfilled outline also
+     stays clear of what Nielsen Norman warns about for main-body placement — a filled,
+     decorated panel above the article is the shape of an ad, and readers skip it.
+
+     The look is `<accordion-elemental>`'s, ported: the box itself unpadded so the inset
+     sits on the summary and on the list, the hover fill and the caret mixed out of
+     `currentcolor` so both follow the theme switch, and the caret drawn as a mask rather
+     than a background image so it takes the summary's color instead of baking one in.
+     One thing is deliberately not that element's: its caret is trailing, because its rows
+     are full-width questions and the far edge is where a run of them lines up. This is one
+     label with a list under it, and there is no run to line up with — so the caret sits
+     where the native marker does, beside the word it opens. */
+  .toc-disclosure {
+    margin: 0 0 3rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .toc-disclosure > summary {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+    /* Sentence case at full strength, and under the body size. Three separate calls:
+       uppercase strips the word shapes readers scan by and is slower to read, which is a
+       cost worth paying for a sidebar's micro-label and not for a control; `--fg-muted`
+       on a thing you click reads as disabled, and the caret inherits it; and 0.875rem
+       keeps it below `h3`'s 1.2rem, so it never enters the article's heading scale. */
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--fg);
+    list-style: none; /* drops the native marker everywhere... */
+  }
+  .toc-disclosure > summary::-webkit-details-marker {
+    display: none; /* ...except Safari, which wants it said this way */
+  }
+  .toc-disclosure > summary:hover {
+    background: color-mix(in srgb, currentcolor 5%, transparent);
+  }
+  /* The summary is only rounded where it is actually the box's edge: closed it is the
+     whole box, open the list sits underneath and the bottom two corners square off. */
+  .toc-disclosure[open] > summary {
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+  /* A half turn rather than a quarter, so it reads the same either way round in RTL. */
+  .toc-disclosure > summary::before {
+    content: "";
+    flex: none; /* the caret never squeezes */
+    width: 1rem;
+    height: 1rem;
+    background: currentcolor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L8 8.94l3.72-3.72a.749.749 0 0 1 1.06 0Z'/%3E%3C/svg%3E") center / contain no-repeat;
+    transition: rotate 250ms ease;
+  }
+  .toc-disclosure[open] > summary::before { rotate: 180deg; }
+  @media (prefers-reduced-motion: reduce) {
+    .toc-disclosure > summary::before { transition: none; }
+  }
+  /* No left rule on the list: the container's border already fences it off, and two
+     lines around six links is one too many. The indent is the caret's width plus its
+     gap, so the links start where the title they belong to starts, not where its
+     marker does. */
+  .toc { padding: 0 1rem 1rem; }
+  .toc ul { list-style: none; margin: 0 0 0 1.5rem; padding: 0; }
+  /* No color and no `text-decoration` here on purpose: the theme's `.prose a` already
+     underlines, and drops the underline on hover. A toc link that reads differently from
+     every other link in the article is the thing both Nielsen Norman and Canada.ca warn
+     about — these are links, so they look like the page's links. Only the box matters. */
+  .toc a { display: block; padding: 0.2rem 0; }
+  /* The filter emits this for H3s. None here yet — but without the rule the first one
+     added would be indistinguishable from an H2. */
+  .toc .toc-h3 a { padding-left: 1rem; }
 </style>
 
 <h1>&lt;code-preview&gt;</h1>
+
 <p>Edit any sample below — the preview above it follows as you type. The theme switcher
   in the topbar drives this page and, wherever a sample passes
   <code>theme-attribute="data-theme"</code>, the frame with it.</p>
 
-<h2>A sample with no assets</h2>
-<p>Renders in a bare document, so it shows the browser's own defaults.</p>
-<code-preview>
+{# Captured, then rendered twice — once through `toc` for the headings, once as itself.
+   The docs layout does this at the layout level, around its `{% block content %}`; this
+   page *is* that block, so it does it here. The filter reads the ids off the rendered
+   html, which markdown would have emitted — this page is html, so the H2s carry theirs
+   by hand. #}
+{% set body %}
+<h2 id="no-assets">A sample with no assets</h2>
+<p>Renders in a bare document, so it shows the browser's own defaults. Every sample on
+  this page also carries its own <code>--code-preview-height</code>, measured once — the
+  stylesheet's 8rem default is a guess, and six previews all settling away from it after
+  load is a page that moves under an anchor link.</p>
+<code-preview style="--code-preview-height: 117px">
   <pre><code class="language-html">&lt;p&gt;Hello from inside the frame.&lt;/p&gt;
 &lt;p&gt;&lt;small&gt;Try editing this.&lt;/small&gt;&lt;/p&gt;</code></pre>
 </code-preview>
 
-<h2>A sample with a stylesheet</h2>
+<h2 id="stylesheet">A sample with a stylesheet</h2>
 <p><code>css</code> takes whitespace-separated urls, resolved against this page.</p>
-<code-preview css="sample.css" theme-attribute="data-theme">
+<code-preview css="sample.css" theme-attribute="data-theme" style="--code-preview-height: 128px">
   <pre><code class="language-html">&lt;div class="card"&gt;
   &lt;h3&gt;Card&lt;/h3&gt;
   &lt;p&gt;Styled by sample.css, which follows the page's theme.&lt;/p&gt;
 &lt;/div&gt;</code></pre>
 </code-preview>
 
-<h2>A wide viewport, scaled down</h2>
+<h2 id="viewport">A wide viewport, scaled down</h2>
 <p>A frame in a text column is a ~700px viewport, and the media queries inside read
   that honestly — so a responsive sample only ever shows its narrow layout.
   <code>viewport-width="1024"</code> renders at a real 1024px and scales the result
   to fit, so the wider breakpoints apply. <code>viewport-widths</code> adds the
   buttons — or narrow your window and watch it fall back on its own.</p>
-<code-preview css="sample.css" theme-attribute="data-theme" viewport-width="1024" viewport-widths="375 768 1024">
+{# The one height here that is only right at one column width: this preview is scaled by
+   column/1024, so it settles shorter in a narrower window. Reserved at what a full-width
+   column gives it, which is the common case and errs tall rather than short. #}
+<code-preview css="sample.css" theme-attribute="data-theme" viewport-width="1024" viewport-widths="375 768 1024" style="--code-preview-height: 92px">
   <pre><code class="language-html">&lt;div class="cols"&gt;
   &lt;div class="card"&gt;&lt;h3&gt;One&lt;/h3&gt;&lt;p&gt;Three across above 900px.&lt;/p&gt;&lt;/div&gt;
   &lt;div class="card"&gt;&lt;h3&gt;Two&lt;/h3&gt;&lt;p&gt;Two across above 600px.&lt;/p&gt;&lt;/div&gt;
@@ -53,10 +154,10 @@ description: Live, editable HTML samples in an isolated iframe — the element d
 &lt;/div&gt;</code></pre>
 </code-preview>
 
-<h2>A sample that runs its own script</h2>
+<h2 id="script">A sample that runs its own script</h2>
 <p>Inline <code>&lt;script&gt;</code> means every edit rebuilds the frame rather than
   patching it — <code>innerHTML</code> never executes scripts it inserts.</p>
-<code-preview reload>
+<code-preview reload style="--code-preview-height: 70px">
   <pre><code class="language-html">&lt;button id="go"&gt;Click me&lt;/button&gt;
 &lt;p id="out"&gt;&lt;/p&gt;
 &lt;script&gt;
@@ -65,13 +166,13 @@ description: Live, editable HTML samples in an isolated iframe — the element d
 &lt;/script&gt;</code></pre>
 </code-preview>
 
-<h2>Read-only</h2>
+<h2 id="read-only">Read-only</h2>
 <p><code>no-edit</code> renders the preview and leaves the code alone.</p>
-<code-preview no-edit>
+<code-preview no-edit style="--code-preview-height: 83px">
   <pre><code class="language-html">&lt;p&gt;You cannot type in this one.&lt;/p&gt;</code></pre>
 </code-preview>
 
-<h2>An options panel</h2>
+<h2 id="options-panel">An options panel</h2>
 <p><code>manifest</code> points at a
   <a href="https://github.com/webcomponents/custom-elements-manifest">custom-elements.json</a>,
   and its presence is what turns the second tab on. The controls are generated from it: the
@@ -86,13 +187,26 @@ description: Live, editable HTML samples in an isolated iframe — the element d
   for you to copy. Turn nothing, and nothing is written.</p>
 <p><strong>Events</strong> are the third group, and the only read-only one: everything in
   <code>events[]</code> is listed whether or not it has fired, and counted as it does.
-  Click the badge in the preview. The colour swatch beside
+  Click the badge in the preview. The color swatch beside
   <code>--demo-badge-outline</code> is the other thing worth looking at — its default is
-  <code>transparent</code>, which no colour picker can hold, so it is drawn crossed out
+  <code>transparent</code>, which no color picker can hold, so it is drawn crossed out
   rather than shown as black.</p>
-<code-preview css="sample.css" js="sample.js" theme-attribute="data-theme" manifest="sample-manifest.json" tab="options">
+{# `tab="options"` reserves the panel as well as the preview, so this one states both.
+   The panel's 192px is what the 12rem default already comes to — measured, not inherited,
+   so a manifest gaining a control shows up here as a number to change. #}
+<code-preview css="sample.css" js="sample.js" theme-attribute="data-theme" manifest="sample-manifest.json" tab="options" style="--code-preview-height: 90px; --code-preview-options-height: 192px">
   <pre><code class="language-html">&lt;p&gt;Shipping status: &lt;demo-badge label="New" count="3"&gt;&lt;/demo-badge&gt;&lt;/p&gt;</code></pre>
 </code-preview>
+{% endset %}
+
+{# The filter emits a bare `<nav><ul>`, so the disclosure is wrapped around it here
+   rather than asked of it. `open`, because on a page this short the list is the point —
+   collapsing it is the affordance, not the starting state. #}
+<details class="toc-disclosure" open>
+  <summary>On this page</summary>
+  {{ body | toc }}
+</details>
+{{ body }}
 
 <script src="code-preview-hljs.min.js"></script>
 <script src="code-preview-options.min.js"></script>

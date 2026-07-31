@@ -33,7 +33,7 @@ shows up in a function signature.
 
 - **A sample's own elements never came alive** when `js` pointed at a custom element
   bundle — which is most of what this element is for. The scripts went into `<head>`
-  undeferred, so `customElements.define` ran *before* the body was parsed and the parser
+  undeferred, so `customElements.define` ran _before_ the body was parsed and the parser
   then upgraded each element the instant it opened its tag, with none of its light-DOM
   children there yet. Every element that reads its own children on connect found nothing
   and bailed.
@@ -102,9 +102,9 @@ shows up in a function signature.
 
 - **A duplicate width in `viewport-widths` no longer renders a duplicate button.**
 
-- **The colour swatch treats an alpha it cannot parse as unknown** — the swatch stays
+- **The color swatch treats an alpha it cannot parse as unknown** — the swatch stays
   where it was, like every other value it cannot be sure about, rather than showing the
-  colour as opaque.
+  color as opaque.
 
 - **An attribute name containing a `.` is matched literally** when the options panel
   reads or rewrites the sample, rather than as a regex wildcard.
@@ -137,7 +137,7 @@ shows up in a function signature.
 - **The event readout is highlighted, and says when it changed.** A `detail` is now written
   as spans carrying highlight.js's own token classes — `hljs-attr` for a key, `hljs-string`,
   `hljs-number`, `hljs-literal`, `hljs-tag` for a node — so a docs page that already ships a
-  syntax theme colours it with no extra css. `dist/code-preview-hljs.css` scopes its rules to
+  syntax theme colors it with no extra css. `dist/code-preview-hljs.css` scopes its rules to
   `:is(pre code, .code-preview-event-value)` for the same reason; a theme of your own that
   targeted the `pre code` form still wins on any real code block. The readout's text is
   unchanged, so anything reading `textContent` reads what it read before.
@@ -165,13 +165,11 @@ shows up in a function signature.
   scroll (past `max-height: 70vh`) scrolls its toast with it, until anchor positioning is
   available everywhere.
 
-  The row also flashes when its count goes up, and if the event landed in the hidden pane
-  the element takes `data-event-fired` until the Options tab is opened — the stylesheet
-  draws that as a dot on the tab.
+  The row also flashes when its count goes up.
 
 - **A keyboard hint**, `<p class="code-preview-hint">`, appended to the element for every
   editable sample: `Press Esc, then Tab, to leave the editor`, becoming `Tab now leaves
-  the editor` once Esc has been pressed. It is the `aria-describedby` of the editor and a
+the editor` once Esc has been pressed. It is the `aria-describedby` of the editor and a
   `role="status"` live region, so the same sentence reaches a screen reader and the
   screen. The stylesheet keeps it invisible until the block has focus and positions it
   absolutely, so it costs no layout — which is why `code-preview` is now
@@ -191,21 +189,44 @@ shows up in a function signature.
 
 ### Changed
 
-- **The colour swatch is the colour.** `<input type="color">` draws the value as a square
-  inset inside its own padding and border, which at 1.75rem is more chrome than colour, and
+- **The options panel's three groups collapse.** Attributes, Custom properties and Events
+  each open on arrival and can be closed, so a panel documenting all three is no longer
+  taller than the sample above it.
+
+  Each group is a `<details class="code-preview-group" open>` with a `<summary>`, where
+  the panel that shipped in 0.2.0 used a `<fieldset>` with a `<legend>`. A stylesheet of
+  your own targeting `.code-preview-group > legend` wants `> summary` instead;
+  `.code-preview-group` and `.code-preview-knobs` are unchanged. Nothing is lost naming
+  the set — `<details>` maps to `role="group"` and its summary is that group's accessible
+  name, exactly as the legend was — and the disclosure is the browser's, so there is no
+  new ARIA and no new key handling. The Events group is still the `aria-live` region;
+  closed, it announces nothing, which is the bargain the hidden pane already made — the
+  toast is what says an event fired.
+
+- **The tabs, the width buttons and the group summaries have a hover state**, which none
+  of them had: a wash tinted from `--fg-muted` plus the full `--fg` text color, behind
+  `@media (hover: hover)` so a tap does not leave it stuck on. A wash rather than the
+  color alone, because the color is already how a tab says it is the selected one.
+
+- **Spelling is en-US throughout** — `color`, not `colour`, in the docs, the comments and
+  this file. No identifier, class or attribute changed: the API was already `--color-*`
+  and `<input type="color">`.
+
+- **The color swatch is the color.** `<input type="color">` draws the value as a square
+  inset inside its own padding and border, which at 1.75rem is more chrome than color, and
   the chrome was already drawn around it by this stylesheet. The value now fills the button
   (`::-webkit-color-swatch-wrapper`, `::-webkit-color-swatch`, `::-moz-color-swatch`, one
   rule each — a selector list containing a pseudo-element the engine does not know is a
   list it drops whole).
 
-  That only pays if the colour is true, so the swatch now follows the field: the value is
-  resolved by setting it on the swatch and reading the computed colour back, which is what
-  turns a named colour, `hsl(…)` or a `color-mix(…)` into channels. A value nothing can
-  resolve leaves the swatch where it was, rather than claiming a colour the sample does not
+  That only pays if the color is true, so the swatch now follows the field: the value is
+  resolved by setting it on the swatch and reading the computed color back, which is what
+  turns a named color, `hsl(…)` or a `color-mix(…)` into channels. A value nothing can
+  resolve leaves the swatch where it was, rather than claiming a color the sample does not
   have.
 
 - **`transparent` is drawn as a crossed-out square**, a thin red cross over black, the way
-  a mac shows no colour. There is no transparent in a colour picker: `<input type="color">`
+  a mac shows no color. There is no transparent in a color picker: `<input type="color">`
   holds an opaque `#rrggbb` and nothing else, and the newer `alpha` attribute only buys
   `#rrggbbaa` — still not the keyword, which is a real default in a themeable library. The
   text field remains the control; the swatch stops lying about it. The class is
@@ -214,7 +235,7 @@ shows up in a function signature.
 - **The `<select>` caret is drawn rather than left to the platform**, which put it hard
   against the field's right edge with 0.375rem of padding on the other side. It now sits at
   the same 0.375rem, and takes `currentColor` — two gradients making one triangle, so there
-  is no data uri to recolour per theme and no extra element.
+  is no data uri to recolor per theme and no extra element.
 
 - **Group titles are uppercased** — `Attributes`, `Custom properties`, `Events`. Only the
   legends: the names below them are verbatim attribute and custom-property names, where
@@ -235,13 +256,15 @@ shows up in a function signature.
   ```html
   <script src="dist/code-preview-options.min.js"></script>
 
-  <code-preview manifest="dist/custom-elements.json" tab="options"> … </code-preview>
+  <code-preview manifest="dist/custom-elements.json" tab="options">
+    …
+  </code-preview>
   ```
 
   The two halves of the panel write to two different places, which is the one real design
   decision in it. An **attribute** belongs to an element in the sample, so its knob rewrites
   the code block — spliced into the opening tag with a regex rather than parsed and
-  re-serialized, because on a documentation page the markup *is* the documentation and
+  re-serialized, because on a documentation page the markup _is_ the documentation and
   reformatting it on the first knob turn is not acceptable. Edit it back by hand and the
   controls re-read the source next time the tab is opened. A **custom property** is not part
   of the sample at all: it goes into one `<style>` appended last in the frame's head, whose
@@ -308,7 +331,7 @@ Initial release.
   page that has none. Exposed as `code-preview-element` and `code-preview-element/hljs`.
 
 - Shipped stylesheets. `dist/code-preview.css` (`./style`) is the layout the element needs;
-  `dist/code-preview-hljs.css` (`./theme`) is optional syntax colours, kept separate so a site
+  `dist/code-preview-hljs.css` (`./theme`) is optional syntax colors, kept separate so a site
   with its own theme is not overridden.
 
 - TypeScript declarations for both builds.

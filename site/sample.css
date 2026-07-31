@@ -41,7 +41,7 @@ body {
    frame is sample.js, a delegated click listener that gives the panel's Events group
    something to count, and the badge knows nothing about it.
 
-   `--demo-badge-outline` defaults to `transparent` on purpose: it is the value no colour
+   `--demo-badge-outline` defaults to `transparent` on purpose: it is the value no color
    picker can hold, and the swatch beside its field is the crossed-out square that says so. */
 demo-badge {
   --demo-badge-bg: color-mix(in srgb, currentcolor 12%, transparent);

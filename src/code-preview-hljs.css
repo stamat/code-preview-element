@@ -1,4 +1,4 @@
-/* highlight.js token colours, light and dark, self-hosted — no CDN theme needed.
+/* highlight.js token colors, light and dark, self-hosted — no CDN theme needed.
 
    Optional and deliberately a separate file: a docs site that already ships a syntax
    theme should not have it overridden by this one. Load it only if the code blocks
@@ -9,7 +9,7 @@
    Scoped to `pre code` rather than bare `.hljs-*` so it cannot reach code blocks
    elsewhere on the page that a host theme owns. The events readout is the second scope:
    it carries the same token classes and is not a code block, so `pre code` misses it —
-   and a page with a syntax theme of its own colours it without this file at all, which is
+   and a page with a syntax theme of its own colors it without this file at all, which is
    the point of using hljs's names there. Dark follows the OS by default and
    the host's [data-theme] when it sets one — the same attribute the element mirrors
    into its preview frames. */

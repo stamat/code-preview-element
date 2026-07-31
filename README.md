@@ -5,6 +5,31 @@ A code block that renders itself. `<code-preview>` wraps a highlighted
 applied as you type. The sample is the only source of truth, so a documented example
 and what it actually does cannot drift.
 
+**[Live demo →](https://stamat.github.io/code-preview-element/)** — the element,
+demonstrated by the element.
+
+- [Install](#install)
+- [How it works](#how-it-works)
+- [Why this one](#why-this-one)
+- [Attributes](#attributes)
+- [Responsive samples](#responsive-samples)
+- [Wiring it up](#wiring-it-up)
+- [Editing](#editing)
+- [The options panel](#the-options-panel) — [Where a knob writes](#where-a-knob-writes), [Controls](#controls)
+- [Three builds](#three-builds)
+- [From JavaScript](#from-javascript)
+- [Styling](#styling) — [Reserved height](#reserved-height)
+- [Known limits](#known-limits)
+- [Development](#development)
+
+## Install
+
+```sh
+npm install code-preview-element
+```
+
+A stylesheet and a script, and any `<pre><code>` you wrap is live:
+
 ```html
 <link
   rel="stylesheet"
@@ -20,7 +45,35 @@ and what it actually does cannot drift.
 That build is 11KB and brings no highlighter, because it expects the page to already
 have one — a docs site loading a second copy of highlight.js is 42KB spent on nothing.
 If yours has none, swap in `dist/code-preview-hljs.min.js`, which carries its own. See
-[Two builds](#two-builds).
+[Three builds](#three-builds).
+
+Or skip the install and take the same two files from a CDN:
+
+```html
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/code-preview-element@1/dist/code-preview.min.css"
+/>
+<script src="https://cdn.jsdelivr.net/npm/code-preview-element@1/dist/code-preview.min.js"></script>
+```
+
+From a bundler, import for the side effect — every entry defines the element itself,
+so there is nothing to call:
+
+```js
+import "code-preview-element"; // default build; uses window.hljs if the page has one
+import "code-preview-element/hljs"; // the same element, highlight.js bundled in
+import "code-preview-element/options"; // the options panel, on top of either
+import "code-preview-element/style"; // required css
+import "code-preview-element/theme"; // optional highlight.js token colors
+```
+
+Import one of the first two, not both. The last two are stylesheets, so they need a
+bundler that accepts a css import; `dist/code-preview.css` and
+`dist/code-preview-hljs.css` are the same files for anything that would rather link
+them.
+
+## How it works
 
 The sample can arrive plain, as above — the element highlights it on upgrade. A block
 that is already highlighted (a fence a site generator ran hljs over at build time) is
@@ -56,7 +109,7 @@ around it. A tool that sandboxes its preview onto a separate origin structurally
 cannot do that second part.
 
 **Two script tags and no build step.** 11KB on a docs site that already ships
-highlight.js, 53KB standalone — see [Two builds](#two-builds). No service worker, no
+highlight.js, 53KB standalone — see [Three builds](#three-builds). No service worker, no
 bundler config, no origin to serve demo files from.
 
 Reach for something else when the shape of the problem is different:
@@ -70,25 +123,42 @@ Reach for something else when the shape of the problem is different:
 
 ## Attributes
 
-| Attribute         | Effect                                                                      |
-| ----------------- | --------------------------------------------------------------------------- |
-| `css`             | whitespace-separated stylesheet urls for the frame                          |
-| `js`              | whitespace-separated script urls for the frame                              |
-| `head`            | extra head html, replacing the default `body{margin:0;padding:1rem}`        |
-| `theme-attribute` | attribute the host page's `[data-theme]` is mirrored onto, inside the frame |
-| `viewport-width`  | render at this css width and scale it down to fit                           |
-| `viewport-widths` | whitespace-separated widths to offer as buttons                             |
-| `manifest`        | url of a `custom-elements.json` — its presence turns the options panel on   |
+| Attribute         | Effect                                                                            |
+| ----------------- | --------------------------------------------------------------------------------- |
+| `css`             | whitespace-separated stylesheet urls for the frame                                |
+| `js`              | whitespace-separated script urls for the frame                                    |
+| `head`            | extra head html, replacing the default `body{margin:0;padding:1rem}`              |
+| `theme-attribute` | attribute the host page's `[data-theme]` is mirrored onto, inside the frame       |
+| `viewport-width`  | render at this css width and scale it down to fit                                 |
+| `viewport-widths` | whitespace-separated widths to offer as buttons                                   |
+| `manifest`        | url of a `custom-elements.json` — its presence turns the options panel on         |
 | `manifest-tag`    | which declaration in it to drive. Default: the first declared tag the sample uses |
-| `tab`             | `code` (default) or `options` — which pane is open, and the live state      |
-| `no-edit`         | render the preview, leave the code read-only                                |
-| `no-toast`        | no event name over the preview — the panel still counts what fires          |
-| `no-shrink`       | never size the preview below its tallest measurement                        |
-| `reload`          | always rebuild the frame on edit, never patch it                            |
+| `tab`             | `code` (default) or `options` — which pane is open, and the live state            |
+| `no-edit`         | render the preview, leave the code read-only                                      |
+| `no-toast`        | no event name over the preview — the panel still counts what fires                |
+| `no-shrink`       | never size the preview below its tallest measurement                              |
+| `reload`          | always rebuild the frame on edit, never patch it                                  |
 
 Relative urls in `css`/`js` resolve against the **host page** — that is what a
 `srcdoc` document inherits as its base url — so a page two directories down needs
 `../../dist/my-library.css`, exactly as it would in its own markup.
+
+`head` replaces the frame's default head, which is nothing but
+`<style>body{margin:0;padding:1rem}</style>` — the padding that keeps a sample off the
+frame's edge. Replacing means replacing, so re-state it if you still want it:
+
+```html
+<code-preview
+  head="&lt;style&gt;body{margin:0;padding:2rem;font-family:system-ui}&lt;/style&gt;"
+>
+  <pre><code class="language-html">&lt;p&gt;Roomier, and not Times New Roman.&lt;/p&gt;</code></pre>
+</code-preview>
+```
+
+It is the escape hatch for what `css` and `js` cannot say — a `<meta>`, a font `<link>`,
+an import map. It lands after the `css` links and before the `js` scripts, so a rule
+here outranks one from a stylesheet at equal specificity. A sample that is already a
+whole `<html>` document is used verbatim, and all three attributes are ignored.
 
 ## Responsive samples
 
@@ -195,7 +265,7 @@ through as extra classes, and a plugin-less setup has the marker-comment route a
 ## Editing
 
 The editor is [CodeJar](https://github.com/antonmedv/codejar), which is in both bundles
-— it is 2KB, and it is the reason the block can be typed into at all. Recolouring on
+— it is 2KB, and it is the reason the block can be typed into at all. Recoloring on
 every keystroke means replacing the block's innerHTML, which drops the caret and shreds
 the undo stack; restoring both through IME composition and Firefox's contenteditable
 quirks is why that library exists. A bare `contenteditable` would not have been less
@@ -250,15 +320,15 @@ that quietly mutated the live DOM inside the frame would break it — the code t
 describe something that is not what is rendered. So the two kinds of knob get two different
 answers:
 
-| Manifest field   | Control from                          | Writes to                                     |
-| ---------------- | ------------------------------------- | --------------------------------------------- |
-| `attributes[]`   | `type.text` — boolean, number, union  | **the sample source**, spliced into its opening tag |
-| `cssProperties[]`| `syntax` — `<color>`, `<time>`, union | **a stylesheet in the frame**, plus a rule to copy   |
-| `events[]`       | nothing — it is a readout             | **nothing.** It counts what the sample fires        |
+| Manifest field    | Control from                          | Writes to                                           |
+| ----------------- | ------------------------------------- | --------------------------------------------------- |
+| `attributes[]`    | `type.text` — boolean, number, union  | **the sample source**, spliced into its opening tag |
+| `cssProperties[]` | `syntax` — `<color>`, `<time>`, union | **a stylesheet in the frame**, plus a rule to copy  |
+| `events[]`        | nothing — it is a readout             | **nothing.** It counts what the sample fires        |
 
 An attribute belongs to an element in the sample, so its knob rewrites the code above and
 the code tab keeps telling the truth. The splice is a regex over the opening tag rather
-than a parse-and-serialize: on a documentation page the markup *is* the documentation, and
+than a parse-and-serialize: on a documentation page the markup _is_ the documentation, and
 reformatting it on the first knob turn is not acceptable. Edit an attribute back by hand
 and the controls re-read it the next time the Options tab is opened.
 
@@ -272,7 +342,7 @@ are.
 An event is not a knob at all. Everything in `events[]` is listed whether or not it has
 fired, and counted as it does, with the last `detail` beside the count — an element whose
 whole API is a `CustomEvent` is otherwise a preview that appears to do nothing when you
-click it. The listeners go on the frame's *document*, in the capture phase: capture is what
+click it. The listeners go on the frame's _document_, in the capture phase: capture is what
 hears an event that does not bubble, which is most of them, and the document is what
 survives the `innerHTML` patch a keystroke does. A rebuilt frame is a new document with a
 new sample in it, so the counts start again.
@@ -282,27 +352,27 @@ is a placeholder, not a value, so emptying a control is how you reset it.
 
 ### Controls
 
-| Manifest says                                    | Control                                       |
-| ------------------------------------------------ | --------------------------------------------- |
-| attribute, `boolean`                              | checkbox — on writes it bare, off removes it |
-| attribute, `'a' \| 'b'`                           | `<select>`, plus an empty option meaning unset |
-| attribute, `number`                               | `<input type="number">`                       |
-| cssProperty, `<color>`                            | text field **plus** a swatch beside it        |
-| cssProperty, `a \| b \| c`                        | `<select>`                                    |
-| anything else, or nothing                         | `<input type="text">`                         |
+| Manifest says              | Control                                        |
+| -------------------------- | ---------------------------------------------- |
+| attribute, `boolean`       | checkbox — on writes it bare, off removes it   |
+| attribute, `'a' \| 'b'`    | `<select>`, plus an empty option meaning unset |
+| attribute, `number`        | `<input type="number">`                        |
+| cssProperty, `<color>`     | text field **plus** a swatch beside it         |
+| cssProperty, `a \| b \| c` | `<select>`                                     |
+| anything else, or nothing  | `<input type="text">`                          |
 
-`<input type="color">` is deliberately never the colour control on its own. `currentcolor`,
+`<input type="color">` is deliberately never the color control on its own. `currentcolor`,
 `Canvas`, `transparent` and `color-mix(in srgb, currentcolor 22%, transparent)` are all real
-defaults in a themeable library, a native colour input can hold none of them, and swapping
+defaults in a themeable library, a native color input can hold none of them, and swapping
 one out for a hex value is how a knob silently destroys a theme that was correct. The text
 field is the control; the picker sits beside it and writes into it.
 
 The swatch does follow the field, though, because it fills the whole button and a button
 showing black beside a field that says `oklch(…)` is a lie the size of the control. The
-value is resolved by setting it on the swatch and reading the computed colour back, which
-is what turns a named colour, `hsl(…)` or a `color-mix(…)` into channels. Two cases cannot
-be shown as a colour, and neither is faked: **`transparent` is drawn as a thin red cross
-over a black square**, the way a mac shows no colour — there is no transparent in a picker,
+value is resolved by setting it on the swatch and reading the computed color back, which
+is what turns a named color, `hsl(…)` or a `color-mix(…)` into channels. Two cases cannot
+be shown as a color, and neither is faked: **`transparent` is drawn as a thin red cross
+over a black square**, the way a mac shows no color — there is no transparent in a picker,
 and the `alpha` attribute newer browsers accept only buys `#rrggbbaa`, not the keyword —
 and anything the engine cannot resolve leaves the swatch where it was.
 
@@ -317,7 +387,7 @@ ignores — the CEM schema sets no `additionalProperties: false`:
   "name": "--switch-elemental-duration",
   "syntax": "<time>",
   "default": "250ms",
-  "x-code-preview": { "control": "range", "min": 0, "max": 1000, "step": 25 }
+  "x-code-preview": { "control": "range", "min": 0, "max": 1000, "step": 25 },
 }
 ```
 
@@ -345,7 +415,7 @@ two script tags does not matter:
 
 A page that highlighted its fences at build time and ships no runtime hljs is the case
 the default cannot cover: the preview and the editor still work, the block keeps
-whatever colour the generator baked in, and typing stops recolouring it. That page
+whatever color the generator baked in, and typing stops recoloring it. That page
 wants the `-hljs` build — it is the whole install in one tag, and the reason to reach
 for it is the _editor_, not the first paint.
 
@@ -356,7 +426,7 @@ is in place before the element registers:
 ```js
 window.hljs = {
   highlightElement(element) {
-    /* recolour it, leave textContent alone */
+    /* recolor it, leave textContent alone */
   },
 };
 ```
@@ -366,23 +436,58 @@ The block arrives carrying `class="hljs language-<lang>"`, and the sample is its
 `CodePreview.highlighter` is the same hook one level down, typed as `Highlighter`, for
 code that registers the element itself rather than loading a bundle that does.
 
+## From JavaScript
+
+An element in the markup needs none of this — the bundles define it and it upgrades on
+its own. What is exported is the seam the options panel itself is built on, so a second
+panel, a different highlighter or a test can use the same one:
+
+| Export                                 |                                                                                |
+| -------------------------------------- | ------------------------------------------------------------------------------ |
+| `define()`                             | registers `code-preview`, a no-op if it already is                             |
+| `CodePreview`                          | the class, for `instanceof` and for the two statics below                      |
+| `CodePreview.highlighter`              | `(element, language) => void` — recolor a block, leave its text alone          |
+| `CodePreview.options`                  | `(host) => void`, called once per element with a `manifest`. The panel sets it |
+| `hljsHighlighter(hljs)`                | builds a `Highlighter` from any hljs-shaped object                             |
+| `buildSrcdoc(html, { css, js, head })` | the frame document as a string, without an element                             |
+| `scaleToFit(available, emulated)`      | the scale factor `viewport-width` applies                                      |
+
+And per instance, the surface the panel drives:
+
+| Member               |                                                                               |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `source`             | the sample's text. Assigning it retypes the block and re-renders              |
+| `frameDocument`      | the frame's document, once it holds one of ours — `undefined` until           |
+| `setFrameStyle(css)` | one stylesheet appended last in the frame's head                              |
+| `toolbar`            | the bar above the preview, created on first read                              |
+| `codePanel`          | the element's own child that holds the code block                             |
+| `onPanelSync`        | assign a callback: "re-read what you are showing", on `tab` and on frame load |
+
+```js
+import { CodePreview } from "code-preview-element";
+
+document.querySelector("code-preview").source = "<p>Set from a script.</p>";
+```
+
+Everything above is typed; `dist/*.d.ts` ships in the package.
+
 ## Styling
 
 Two stylesheets ship in `dist`, both plain CSS, minified and not:
 
-| File                         |                                                       |
-| ---------------------------- | ----------------------------------------------------- |
-| `dist/code-preview.css`      | required — the layout the element needs to work       |
-| `dist/code-preview-hljs.css` | optional — highlight.js token colours, light and dark |
+| File                         |                                                      |
+| ---------------------------- | ---------------------------------------------------- |
+| `dist/code-preview.css`      | required — the layout the element needs to work      |
+| `dist/code-preview-hljs.css` | optional — highlight.js token colors, light and dark |
 
 The second is separate on purpose: a docs site that already ships a syntax theme
 should not have it overridden. Link it only if the code blocks would otherwise be
 monochrome. It is scoped to `pre code`, so it cannot reach code blocks elsewhere on
 the page. It shares a name with `dist/code-preview-hljs.js` and nothing else — one is
-hljs's colours, the other is hljs itself. Under the package exports they are `./theme`
+hljs's colors, the other is hljs itself. Under the package exports they are `./theme`
 and `./hljs`.
 
-The required sheet is the minimum plus as little taste as possible. Every colour is a
+The required sheet is the minimum plus as little taste as possible. Every color is a
 custom property with a fallback — a host page that already defines `--border`, `--bg`,
 `--accent`, `--fg-muted`, `--danger`, `--radius` or `--font-mono` gets its own look for
 free. `--danger` is only the error banner, the strip below the code block that appears
@@ -412,7 +517,9 @@ below it down — the layout shift. So space is held for it before the element h
 upgraded and before the frame has loaded, from one variable:
 
 ```css
-code-preview { --code-preview-height: 8rem; }        /* the default */
+code-preview {
+  --code-preview-height: 8rem;
+} /* the default */
 ```
 
 `--code-preview-bar-height` (default `2.25rem`) is the same for the bar above the
@@ -420,7 +527,7 @@ preview, reserved alongside it whenever `viewport-widths` or `manifest` will put
 there.
 
 `--code-preview-options-height` (default `12rem`) is the third, and only matters with
-`tab="options"` — that is the one case where upgrading *hides* something, since the code
+`tab="options"` — that is the one case where upgrading _hides_ something, since the code
 block is visible until the panel exists to replace it. The stylesheet hides it from the
 start and holds room for the panel instead. It is a floor rather than a height, so it also
 covers the gap between the element upgrading and the manifest arriving.
@@ -436,7 +543,7 @@ actually known, and there is nothing left to guess:
 Measured on the demo page, headless Chrome at 1200×900: CLS `0.0285` with the
 reservation at `4rem`, `0.0167` at `12rem`, `0.0022` at the `8rem` default.
 
-A second shift is possible after that one: a re-measure that comes back *shorter*
+A second shift is possible after that one: a re-measure that comes back _shorter_
 than the last — a webfont or an image landing late, a narrower column scaling the
 frame down — pulls the page back up. `no-shrink` holds the tallest measurement
 instead, trading some empty space below a sample for a preview that never moves what
@@ -482,7 +589,7 @@ npm test           # typecheck + node --test
 
 The site is the [`poops-docs-theme`](https://github.com/stamat/poops-docs-theme)
 `prose` layout, a dev dependency — so the demo doubles as the check that the element
-drops into a real docs theme: its tokens, its highlight.js colours, its copy buttons
+drops into a real docs theme: its tokens, its highlight.js colors, its copy buttons
 wrapping every `pre`. The one thing it has to say out loud is the margin override that
 `code-preview.css` documents.
 

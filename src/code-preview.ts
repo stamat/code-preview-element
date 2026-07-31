@@ -4,11 +4,11 @@
 // bundled in for a page that has none. The element itself is in element.ts.
 //
 // The global is read per call rather than once here, so the order of the two script
-// tags does not matter and a page that loads hljs late still gets colour. A page with
+// tags does not matter and a page that loads hljs late still gets color. A page with
 // no runtime hljs at all — fences highlighted at build time, nothing shipped to the
 // browser — is the case this build cannot fix: the preview and the editor work, the
-// first paint keeps whatever colour the generator baked in, and typing stops
-// recolouring. That page wants the hljs build.
+// first paint keeps whatever color the generator baked in, and typing stops
+// recoloring. That page wants the hljs build.
 import { CodePreview, define, hljsHighlighter } from './element'
 
 export * from './element'

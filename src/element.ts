@@ -93,7 +93,7 @@ const isDocument = (src: string): boolean => /^\s*<(!doctype|html)\b/i.test(src)
 // `render`. `[\s>]` rather than `\b`, so `<scriptish>` is not a script.
 const hasScript = (src: string): boolean => /<script[\s>]/i.test(src)
 
-// Recolour one code block. Called for the first paint of a plain block and again on
+// Recolor one code block. Called for the first paint of a plain block and again on
 // every keystroke, so it has to be idempotent and must not alter `textContent` —
 // that text is the sample.
 export type Highlighter = (element: HTMLElement, language: string) => void
@@ -170,7 +170,7 @@ export class CodePreview extends HTMLElement {
   // Set by the entry file, before it registers the element — an element already in
   // the markup upgrades the moment `define` is called, and its first paint needs
   // this. Left unset the block is still editable and the preview still updates; the
-  // code just stops recolouring.
+  // code just stops recoloring.
   static highlighter?: Highlighter
 
   // Set by the options bundle, exactly as `highlighter` is set by the entry files, and
@@ -289,7 +289,7 @@ export class CodePreview extends HTMLElement {
     // pre-highlighted keep exactly what they have: re-running hljs is work for an
     // identical result, and any version skew would show up as the whole block
     // reshuffling on load. Last, and after the preview is already wired, so a
-    // highlighting problem costs colour and not the demo.
+    // highlighting problem costs color and not the demo.
     if (!code.querySelector('span')) this.highlight(code)
 
     // Last of all, and only when the markup says there is a manifest to read: the panel
@@ -397,7 +397,7 @@ export class CodePreview extends HTMLElement {
   //
   // CodeJar's `updateCode` writes the text, re-highlights and then calls `onUpdate`
   // itself — which is the same `schedule` the editor is wired to — so the write, the
-  // colour and the preview all follow from the one call. Without a jar (`no-edit`)
+  // color and the preview all follow from the one call. Without a jar (`no-edit`)
   // there is nothing listening, so all three are done by hand.
   set source(src: string) {
     const code = this.code
@@ -681,7 +681,7 @@ export class CodePreview extends HTMLElement {
   //
   // `role="textbox"` because a contenteditable is exposed inconsistently without one,
   // and it also makes the highlighter's spans presentational — which is right: the
-  // sample is its text, and the colours are decoration. `aria-multiline` because the
+  // sample is its text, and the colors are decoration. `aria-multiline` because the
   // default for a textbox is a single line, and a code sample is not that.
   //
   // The name is left alone if the markup brought one: a docs page that has already
