@@ -2,18 +2,28 @@
 layout: poops-docs-theme/prose
 description: Live, editable HTML samples in an isolated iframe — the element demonstrated by the element.
 ---
+<link rel="stylesheet" href="code-preview.min.css">
 {# The page is the docs theme's `prose` layout: topbar, one article, its own tokens and
    its own highlight.js colors. Which makes it the honest test — the element's stylesheet
    names its own --code-preview-* properties, and every one of them falls back to the
    generic --border, --bg, --fg, --fg-muted, --accent, --radius or --font-mono before
    its default. This page sets none of the prefixed ones, so the element takes the
    theme's tokens through that second level without being told. #}
+{# The stylesheet link goes after css/prose.min.css, so the two rules they both write —
+   the `pre` margin and the iframe's aspect-ratio — go to the element on equal
+   specificity. The third one, the `.code-wrap` margin the theme's copy button needs, it
+   cannot win on specificity — the theme yields that one itself, in `_prose.scss`. #}
+{# The link also has to lead this run of html rather than follow the notes above it:
+   markdown renders before the template engine, so a `{#` comment that opens a chunk is
+   prose to marked and comes back wrapped in a `<p>` the engine then empties. Every
+   template tag on this page therefore sits in html that began with a tag — here the
+   link, below the intro and the toc's `<details>` — and none of them contains a blank
+   line, which would end that html and put the rest of the tag back into a paragraph.
+   The empty line below is the same rule read the other way: `<style>` has to be the tag
+   that opens the next run rather than a line inside this one, because a style block is
+   raw all the way to its closing tag — blank lines in the css and all — and a line in
+   the middle of someone else's run is not. #}
 
-{# After css/prose.min.css, so the two rules they both write — the `pre` margin and the
-   iframe's aspect-ratio — go to the element on equal specificity. The third one, the
-   `.code-wrap` margin the theme's copy button needs, it cannot win on specificity — the
-   theme yields that one itself, in `_prose.scss`. #}
-<link rel="stylesheet" href="code-preview.min.css">
 <style>
   /* The theme's own copy of this rule ships after the version installed here, so the
      override stays until the dependency catches up. Harmless once it has — the same
@@ -109,98 +119,136 @@ description: Live, editable HTML samples in an isolated iframe — the element d
 </style>
 
 <h1>&lt;code-preview&gt;</h1>
-
 <p>Edit any sample below — the preview above it follows as you type. The theme switcher
   in the topbar drives this page and, wherever a sample passes
   <code>theme-attribute="data-theme"</code>, the frame with it.</p>
-
+{# The title and the intro are the one piece of prose left as html, because the capture
+   below has to open inside a run of html and this is what it opens against. Everything
+   from here to `{% endset %}` is markdown. #}
 {# Captured, then rendered twice — once through `toc` for the headings, once as itself.
    The docs layout does this at the layout level, around its `{% block content %}`; this
    page *is* that block, so it does it here. The filter reads the ids off the rendered
-   html, which markdown would have emitted — this page is html, so the H2s carry theirs
-   by hand. #}
+   html, which the markdown heading renderer emits — one reason this page is markdown at
+   all, since as html the H2s had to carry them by hand. #}
 {% set body %}
-<h2 id="no-assets">A sample with no assets</h2>
-<p>Renders in a bare document, so it shows the browser's own defaults. Every sample on
-  this page also carries its own <code>--code-preview-height</code>, measured once — the
-  stylesheet's 8rem default is a guess, and six previews all settling away from it after
-  load is a page that moves under an anchor link.</p>
+
+## A sample with no assets
+
+Renders in a bare document, so it shows the browser's own defaults. Every sample on
+this page also carries its own `--code-preview-height`, measured once — the stylesheet's
+8rem default is a guess, and six previews all settling away from it after load is a page
+that moves under an anchor link.
+
 <code-preview style="--code-preview-height: 117px">
-  <pre><code class="language-html">&lt;p&gt;Hello from inside the frame.&lt;/p&gt;
-&lt;p&gt;&lt;small&gt;Try editing this.&lt;/small&gt;&lt;/p&gt;</code></pre>
+
+```html
+<p>Hello from inside the frame.</p>
+<p><small>Try editing this.</small></p>
+```
+
 </code-preview>
 
-<h2 id="stylesheet">A sample with a stylesheet</h2>
-<p><code>css</code> takes whitespace-separated urls, resolved against this page.</p>
+## A sample with a stylesheet
+
+`css` takes whitespace-separated urls, resolved against this page.
+
 <code-preview css="sample.css" theme-attribute="data-theme" style="--code-preview-height: 128px">
-  <pre><code class="language-html">&lt;div class="card"&gt;
-  &lt;h3&gt;Card&lt;/h3&gt;
-  &lt;p&gt;Styled by sample.css, which follows the page's theme.&lt;/p&gt;
-&lt;/div&gt;</code></pre>
+
+```html
+<div class="card">
+  <h3>Card</h3>
+  <p>Styled by sample.css, which follows the page's theme.</p>
+</div>
+```
+
 </code-preview>
 
-<h2 id="viewport">A wide viewport, scaled down</h2>
-<p>A frame in a text column is a ~700px viewport, and the media queries inside read
-  that honestly — so a responsive sample only ever shows its narrow layout.
-  <code>viewport-width="1024"</code> renders at a real 1024px and scales the result
-  to fit, so the wider breakpoints apply. <code>viewport-widths</code> adds the
-  buttons — or narrow your window and watch it fall back on its own.</p>
+## A wide viewport, scaled down
+
+A frame in a text column is a ~700px viewport, and the media queries inside read that
+honestly — so a responsive sample only ever shows its narrow layout.
+`viewport-width="1024"` renders at a real 1024px and scales the result to fit, so the
+wider breakpoints apply. `viewport-widths` adds the buttons — or narrow your window and
+watch it fall back on its own.
+
+<code-preview css="sample.css" theme-attribute="data-theme" viewport-width="1024" viewport-widths="375 768 1024" style="--code-preview-height: 92px">
 {# The one height here that is only right at one column width: this preview is scaled by
    column/1024, so it settles shorter in a narrower window. Reserved at what a full-width
    column gives it, which is the common case and errs tall rather than short. #}
-<code-preview css="sample.css" theme-attribute="data-theme" viewport-width="1024" viewport-widths="375 768 1024" style="--code-preview-height: 92px">
-  <pre><code class="language-html">&lt;div class="cols"&gt;
-  &lt;div class="card"&gt;&lt;h3&gt;One&lt;/h3&gt;&lt;p&gt;Three across above 900px.&lt;/p&gt;&lt;/div&gt;
-  &lt;div class="card"&gt;&lt;h3&gt;Two&lt;/h3&gt;&lt;p&gt;Two across above 600px.&lt;/p&gt;&lt;/div&gt;
-  &lt;div class="card"&gt;&lt;h3&gt;Three&lt;/h3&gt;&lt;p&gt;Stacked below that.&lt;/p&gt;&lt;/div&gt;
-&lt;/div&gt;</code></pre>
+
+```html
+<div class="cols">
+  <div class="card"><h3>One</h3><p>Three across above 900px.</p></div>
+  <div class="card"><h3>Two</h3><p>Two across above 600px.</p></div>
+  <div class="card"><h3>Three</h3><p>Stacked below that.</p></div>
+</div>
+```
+
 </code-preview>
 
-<h2 id="script">A sample that runs its own script</h2>
-<p>Inline <code>&lt;script&gt;</code> means every edit rebuilds the frame rather than
-  patching it — <code>innerHTML</code> never executes scripts it inserts.</p>
+## A sample that runs its own script
+
+Inline `<script>` means every edit rebuilds the frame rather than patching it —
+`innerHTML` never executes scripts it inserts.
+
 <code-preview reload style="--code-preview-height: 70px">
-  <pre><code class="language-html">&lt;button id="go"&gt;Click me&lt;/button&gt;
-&lt;p id="out"&gt;&lt;/p&gt;
-&lt;script&gt;
+
+```html
+<button id="go">Click me</button>
+<p id="out"></p>
+<script>
   let n = 0
-  go.onclick = () =&gt; out.textContent = `clicked ${++n}`
-&lt;/script&gt;</code></pre>
+  go.onclick = () => out.textContent = `clicked ${++n}`
+</script>
+```
+
 </code-preview>
 
-<h2 id="read-only">Read-only</h2>
-<p><code>no-edit</code> renders the preview and leaves the code alone.</p>
+## Read-only
+
+`no-edit` renders the preview and leaves the code alone.
+
 <code-preview no-edit style="--code-preview-height: 83px">
-  <pre><code class="language-html">&lt;p&gt;You cannot type in this one.&lt;/p&gt;</code></pre>
+
+```html
+<p>You cannot type in this one.</p>
+```
+
 </code-preview>
 
-<h2 id="options-panel">An options panel</h2>
-<p><code>manifest</code> points at a
-  <a href="https://github.com/webcomponents/custom-elements-manifest">custom-elements.json</a>,
-  and its presence is what turns the second tab on. The controls are generated from it: the
-  attributes come from <code>attributes[]</code>, the custom properties from
-  <code>cssProperties[]</code>, and each one's control from the type or syntax the manifest
-  already declares. No manifest, no tabs — every page above renders exactly as it did.</p>
-<p>The two halves write to two different places, and both are honest. An <strong>attribute</strong>
-  belongs to an element in the sample, so its knob rewrites the code above and the code tab
-  keeps telling the truth — edit it back by hand and the panel re-reads it. A <strong>custom
-  property</strong> is not part of the sample at all: it goes into a stylesheet inside the
-  frame, exactly where you would put it, and the rule is printed at the bottom of the panel
-  for you to copy. Turn nothing, and nothing is written.</p>
-<p><strong>Events</strong> are the third group, and the only read-only one: everything in
-  <code>events[]</code> is listed whether or not it has fired, and counted as it does.
-  Click the badge in the preview. The color swatch beside
-  <code>--demo-badge-outline</code> is the other thing worth looking at — its default is
-  <code>transparent</code>, which no color picker can hold, so it is drawn crossed out
-  rather than shown as black.</p>
+## An options panel
+
+`manifest` points at a
+[custom-elements.json](https://github.com/webcomponents/custom-elements-manifest), and
+its presence is what turns the second tab on. The controls are generated from it: the
+attributes come from `attributes[]`, the custom properties from `cssProperties[]`, and
+each one's control from the type or syntax the manifest already declares. No manifest,
+no tabs — every page above renders exactly as it did.
+
+The two halves write to two different places, and both are honest. An **attribute**
+belongs to an element in the sample, so its knob rewrites the code above and the code tab
+keeps telling the truth — edit it back by hand and the panel re-reads it. A **custom
+property** is not part of the sample at all: it goes into a stylesheet inside the frame,
+exactly where you would put it, and the rule is printed at the bottom of the panel for
+you to copy. Turn nothing, and nothing is written.
+
+**Events** are the third group, and the only read-only one: everything in `events[]` is
+listed whether or not it has fired, and counted as it does. Click the badge in the
+preview. The color swatch beside `--demo-badge-outline` is the other thing worth looking
+at — its default is `transparent`, which no color picker can hold, so it is drawn crossed
+out rather than shown as black.
+
+<code-preview css="sample.css" js="sample.js" theme-attribute="data-theme" manifest="sample-manifest.json" tab="options" style="--code-preview-height: 90px; --code-preview-options-height: 192px">
 {# `tab="options"` reserves the panel as well as the preview, so this one states both.
    The panel's 192px is what the 12rem default already comes to — measured, not inherited,
    so a manifest gaining a control shows up here as a number to change. #}
-<code-preview css="sample.css" js="sample.js" theme-attribute="data-theme" manifest="sample-manifest.json" tab="options" style="--code-preview-height: 90px; --code-preview-options-height: 192px">
-  <pre><code class="language-html">&lt;p&gt;Shipping status: &lt;demo-badge label="New" count="3"&gt;&lt;/demo-badge&gt;&lt;/p&gt;</code></pre>
+
+```html
+<p>Shipping status: <demo-badge label="New" count="3"></demo-badge></p>
+```
+
 </code-preview>
 {% endset %}
-
 {# The filter emits a bare `<nav><ul>`, so the disclosure is wrapped around it here
    rather than asked of it. `open`, because on a page this short the list is the point —
    collapsing it is the affordance, not the starting state. #}
