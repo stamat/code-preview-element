@@ -8,8 +8,7 @@
         "sourcemap": true,
         "minify": true,
         "justMinified": false,
-        "format": "iife",
-        "target": "es2019"
+        "format": "iife"
       }
     },
     {
@@ -20,8 +19,7 @@
         "sourcemap": true,
         "minify": true,
         "justMinified": false,
-        "format": "iife",
-        "target": "es2019"
+        "format": "iife"
       }
     },
     {
@@ -32,8 +30,7 @@
         "sourcemap": true,
         "minify": true,
         "justMinified": false,
-        "format": "iife",
-        "target": "es2019"
+        "format": "iife"
       }
     }
   ],
@@ -80,24 +77,26 @@
   "markup": {
     "in": "site",
     "out": "_site",
-    "site": {
-      "title": "code-preview",
-      "brand": "code-preview-element",
-      "brandMark": "🪟",
-      "description": "A code block that renders itself: live, editable HTML samples in an isolated iframe.",
-      "lang": "en",
-      "url": "https://stamat.github.io/code-preview-element",
-      "repo": "https://github.com/stamat/code-preview-element",
-      "//jsonld": "The prose layout emits the jsonld filter's block; this makes it TechArticle rather than the auto-detected WebPage, which is what a docs page is.",
-      "jsonld": { "@type": "TechArticle" },
-      "iconLinks": [
-        { "title": "npm", "url": "https://www.npmjs.com/package/code-preview-element", "icon": "npm" }
-      ]
+    "options": {
+      "site": {
+        "title": "code-preview",
+        "brand": "code-preview-element",
+        "brandMark": "🪟",
+        "description": "A code block that renders itself: live, editable HTML samples in an isolated iframe.",
+        "lang": "en",
+        "url": "https://stamat.github.io/code-preview-element",
+        "repo": "https://github.com/stamat/code-preview-element",
+        "//jsonld": "The prose layout emits the jsonld filter's block; this makes it TechArticle rather than the auto-detected WebPage, which is what a docs page is.",
+        "jsonld": { "@type": "TechArticle" },
+        "iconLinks": [
+          { "title": "npm", "url": "https://www.npmjs.com/package/code-preview-element", "icon": "npm" }
+        ]
+      }
     }
   },
   "serve": {
-    "port": 4040,
-    "base": "/_site"
+    "//": "No `base` — since 2.0 it defaults to the markup `out`, which is what it was set to.",
+    "port": 4040
   },
   "livereload": true,
   "watch": ["src", "site"]
