@@ -60,20 +60,34 @@ code-preview:not(:defined)[tab="options"] > :is(pre, .code-wrap) {
   display: none;
 }
 
+/* A sample written as several fences — markup, then its css, then its js — is several
+   blocks in the markup and one tab each after the upgrade. Until then only the first is
+   the sample: the rest are the panes nobody has switched to yet, and stacking all three
+   is a page that jumps by two code blocks the moment the element defines. */
+code-preview:not(:defined) > :is(pre, .code-wrap) ~ :is(pre, .code-wrap) {
+  display: none;
+}
+
 /* Collapsed and clipped rather than `display: none`, so that find-in-page can still
-   search the sample nobody is looking at — the block carries `hidden="until-found"`, and
-   a browser that honours it reveals the match and the panel switches to the Code tab to
-   show it. `display: none` here would take that back, since it is the stylesheet and not
-   the attribute that does the hiding: the attribute cannot be trusted to, because a
-   browser without `until-found` support leaves an unknown `hidden` value *visible*. This
-   way the fallback is a collapsed box everywhere and searchable where it is supported. */
-code-preview.is-tabbed[tab="options"] > :is(pre, .code-wrap) {
+   search the pane nobody is looking at — it carries `hidden="until-found"`, and a browser
+   that honours it reveals the match and the strip switches to the tab holding it.
+   `display: none` here would take that back, since it is the stylesheet and not the
+   attribute that does the hiding: the attribute cannot be trusted to, because a browser
+   without `until-found` support leaves an unknown `hidden` value *visible*. This way the
+   fallback is a collapsed box everywhere and searchable where it is supported.
+
+   Keyed off `[data-pane]`, which the element writes on every pane it registers, so this
+   is one rule for two panes or for four. The second selector is the copy-button race: a
+   script that runs later wraps the block the element put the attribute on, and the
+   wrapper — with the button sitting in it — would otherwise stay over the pane on top. */
+code-preview.is-tabbed > [data-pane][hidden],
+code-preview.is-tabbed > :has(> [data-pane][hidden]) {
   block-size: 0;
   padding: 0;
   border: 0;
   background: none;
   box-shadow: none;
-  /* The wrapper a copy-button script adds is not the box the panel put the attribute on,
+  /* The wrapper a copy-button script adds is not the box the element put the attribute on,
      so it does not collapse on its own — and its button is positioned inside it. */
   overflow: hidden;
   pointer-events: none;
@@ -108,6 +122,16 @@ code-preview .code-preview-bar {
 
 code-preview .code-preview-bar + .code-preview-viewport {
   border-top: 0;
+  border-radius: 0;
+}
+
+/* The strip a several-fence sample builds sits *between* the preview and the panes —
+   the toolbar above the preview is the widths', this one is the tabs'. There it is a
+   divider, not the widget's top edge: square, and one line per seam — its own top
+   border against the preview, and the pane's own line below, so no bottom border here
+   to double it. */
+code-preview .code-preview-viewport + .code-preview-bar {
+  border-bottom: 0;
   border-radius: 0;
 }
 
@@ -307,9 +331,11 @@ code-preview.is-key-focus:has(pre:focus-within) > .code-preview-hint {
    region, so left in it announces the editor's Tab state on a tab that has no editor, and
    an `aria-describedby` pointing into a pane the reader has switched away from.
 
-   `[tab]:not([tab="code"])` rather than naming the options panel: an absent attribute is
-   the code tab, and a third pane added later is one this rule already knows about. */
-code-preview.is-tabbed[tab]:not([tab="code"]) > .code-preview-hint {
+   `.is-code-pane` rather than naming the tabs: with a css and a js pane beside the markup
+   there are now three tabs the hint belongs on and one it does not, and which is which is
+   the element's to say — it is the only one that knows whether the pane showing has an
+   editor in it. */
+code-preview.is-tabbed:not(.is-code-pane) > .code-preview-hint {
   display: none;
 }
 

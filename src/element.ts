@@ -58,11 +58,30 @@
 //   reload           always rebuild the frame on edit, never patch it
 import { CodeJar } from 'codejar'
 
-// ponytail: html only. Editing css or js means splitting a demo across three
-// fences and adding a tab strip; nothing in the docs wants that yet.
-const EDITABLE = /^(html|xml)$/
+// The languages an editor is offered for: the three the frame can actually run. A fence
+// in anything else still becomes a pane — a reader may well want `scss` beside the sample
+// — it is just read-only, because there is nothing in the frame to type into.
+const EDITABLE = /^(html|xml|css|js|javascript)$/
+
+// Which pane a fence's language is. The markup pane is called `code` and not `html`
+// because `tab="code"` is what every page that already uses this element writes, and a
+// rename would be a breaking change to buy a tidier word.
+const PANE_OF: Record<string, string> = {
+  html: 'code',
+  xml: 'code',
+  css: 'css',
+  js: 'js',
+  javascript: 'js'
+}
+
+// What the tab says. Only reached when there is more than one code pane — a lone one is
+// labelled `Code`, which is what it has always said.
+const PANE_LABEL: Record<string, string> = { code: 'HTML', css: 'CSS', js: 'JS' }
 
 const DEFAULT_HEAD = '<style>body{margin:0;padding:1rem}</style>'
+
+// Everything that can hold focus without being given a tab stop.
+const FOCUSABLE = 'a[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]'
 
 // A patch lands in the frame that is already loaded; a rebuild reloads it, so it
 // gets a longer leash — one reload per keystroke is miserable, and half-typed
@@ -109,10 +128,16 @@ const attr = (value: string): string => value.replace(/&/g, '&amp;').replace(/"/
 // rather than injecting a second one around it.
 const isDocument = (src: string): boolean => /^\s*<(!doctype|html)\b/i.test(src)
 
-// A sample that carries its own `<script>` — the way a js demo is written, since there
-// is only ever one fence. It has to reload for the same reason a url in `js` does; see
-// `render`. `[\s>]` rather than `\b`, so `<scriptish>` is not a script.
+// A markup sample that carries its own `<script>`, which a demo written as one fence has
+// to. It reloads for the same reason a url in `js` does; see `render`. `[\s>]` rather than
+// `\b`, so `<scriptish>` is not a script.
 const hasScript = (src: string): boolean => /<script[\s>]/i.test(src)
+
+// A `</script>` or `</style>` inside the text of the pane being inlined would close the
+// tag the text is inside, and the rest of the sample would land in the document as markup.
+// The backslash is invisible to both languages wherever the sequence can legally appear —
+// inside a string or a comment — and nowhere else is either of them valid anyway.
+const inlineSafe = (text: string): string => text.replace(/<\/(script|style)/gi, '<\\/$1')
 
 // Recolor one code block. Called for the first paint of a plain block and again on
 // every keystroke, so it has to be idempotent and must not alter `textContent` —
@@ -157,7 +182,7 @@ export function scaleToFit(available: number, emulated: number): number {
 // above are silent rather than loud.
 export function buildSrcdoc(
   html: string,
-  opts: { css?: string[], js?: string[], head?: string | null } = {}
+  opts: { css?: string[], js?: string[], head?: string | null, style?: string, script?: string } = {}
 ): string {
   if (isDocument(html)) return html
   const styles = (opts.css ?? []).map((href) => `<link rel="stylesheet" href="${attr(href)}">`).join('')
@@ -177,10 +202,62 @@ export function buildSrcdoc(
   // urls. An inline `<script>` inside the sample is unaffected — that is the author's,
   // and it is in body where it was written.
   const scripts = (opts.js ?? []).map((src) => `<script src="${attr(src)}" defer></script>`).join('')
+  // The css pane, last in head so it outranks both the library's stylesheets and whatever
+  // `head` brought — it is the author's own, and it is the one thing here they are typing
+  // into. The id is what a css-only edit patches instead of rebuilding the document.
+  const style = opts.style ? `<style id="code-preview-sample">${inlineSafe(opts.style)}</style>` : ''
+  // The js pane, and `type="module"` is not about scoping. A classic inline script runs
+  // while the parser is still going — before the deferred bundles above have defined
+  // anything — so a sample that touches a custom element gets an element that has not
+  // upgraded, and writing a property on one of those installs an own property that
+  // shadows the accessor the class is about to bring. It fails silently and for good. A
+  // module is deferred too, and deferred scripts run in document order, so this one runs
+  // after every url in `js`.
+  const module = opts.script ? `<script type="module">${inlineSafe(opts.script)}</script>` : ''
   return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
-    styles + (opts.head ?? DEFAULT_HEAD) + scripts +
-    '</head><body>' + html + '</body></html>'
+    styles + (opts.head ?? DEFAULT_HEAD) + style + scripts +
+    '</head><body>' + html + module + '</body></html>'
 }
+
+// Show or hide one pane.
+//
+// Hidden is `until-found` rather than a bare `hidden`, so find-in-page still searches the
+// pane nobody is looking at — the sample is the main thing a reader ctrl-Fs for on a docs
+// page, and a tab strip that takes it out of reach of the browser's own search would be a
+// step backwards from the plain code block this replaces. The stylesheet is what actually
+// collapses it, since a browser with no `until-found` support leaves an unknown `hidden`
+// value visible.
+//
+// The tab stop is the other half: a pane with nothing focusable in it cannot be reached by
+// keyboard, and so cannot be scrolled either. That is the APG's answer and it is only for
+// that case — an editable code block is already focusable, and so is a panel full of
+// controls, and a second stop on either would be one to Tab past for nothing.
+function showPane(pane: HTMLElement, on: boolean): void {
+  if (!on) {
+    pane.setAttribute('hidden', 'until-found')
+    pane.removeAttribute('tabindex')
+    return
+  }
+  pane.removeAttribute('hidden')
+  if (pane.querySelector(FOCUSABLE)) pane.removeAttribute('tabindex')
+  else pane.tabIndex = 0
+}
+
+// One tab and the box it shows. Code panes come out of the markup — a fence each — and
+// carry an editor; the options panel registers one of its own from the other bundle, which
+// is why `code` is optional and why this is the only thing the two scripts agree on.
+interface Pane {
+  name: string
+  panel: HTMLElement
+  tab: HTMLButtonElement
+  code?: HTMLElement
+  language?: string
+  jar?: ReturnType<typeof CodeJar>
+}
+
+// The three texts a frame is built out of. Compared as a whole to decide what an edit
+// costs, which is the only reason they travel together.
+interface Sources { html: string, css: string, js: string }
 
 export class CodePreview extends HTMLElement {
   // The width buttons write `viewport-width` and the tabs write `tab`, and this is
@@ -211,12 +288,16 @@ export class CodePreview extends HTMLElement {
   private frame?: HTMLIFrameElement
   private viewport?: HTMLElement
   private bar?: HTMLElement
+  private tablist?: HTMLElement
+  // In the order the tabs are shown, which is the order the fences were written in, with
+  // the options panel last because it registers itself last.
+  private panes = new Map<string, Pane>()
   private code?: HTMLElement
   private language = 'html'
+  private uid = `code-preview-${++uid}`
   private resize?: ResizeObserver
   private theme?: MutationObserver
   private timer?: ReturnType<typeof setTimeout>
-  private jar?: ReturnType<typeof CodeJar>
   // The keyboard hint, once there is an editor to hint about. Kept because its text is
   // the one thing that changes when Escape releases Tab.
   private hint?: HTMLElement
@@ -239,7 +320,10 @@ export class CodePreview extends HTMLElement {
   // everything live in there: a script's state, and the focus a keyboard user has put on
   // a control inside the sample, which is the one thing a preview of an accessible
   // component has to be able to hold still for.
-  private rendered?: string
+  //
+  // All three panes, because which of them moved is what decides between a reload, a patch
+  // and a stylesheet write.
+  private rendered?: Sources
   // The declarations the options panel has turned on, as one css rule's worth of text.
   // Kept here rather than in the panel because a rebuilt frame is a new document with a
   // new head, and re-applying it is `onFrameLoad`'s job.
@@ -251,18 +335,12 @@ export class CodePreview extends HTMLElement {
     // reloads it, so the frame's own load event rebuilds everything downstream.
     if (this.frame) {
       this.watchTheme()
-      if (this.editable) this.attachEditor()
+      this.attachEditors()
       return
     }
-    // Two queries, not one selector list: a list returns the first match in *tree*
-    // order, so `'pre code, pre'` hands back the `<pre>` every time — which then gets
-    // hljs run over markup containing a `<code>` child, and has its classes
-    // overwritten. The `<code>` is what holds the sample; the `<pre>` is the fallback
-    // for markup that has none.
-    const code = this.querySelector<HTMLElement>('pre > code') ?? this.querySelector<HTMLElement>('pre')
+    this.collectPanes()
+    const code = this.code
     if (!code) return
-    this.code = code
-    this.language = /language-([\w-]+)/.exec(code.className)?.[1]?.toLowerCase() ?? 'html'
 
     const frame = document.createElement('iframe')
     frame.className = 'code-preview-frame'
@@ -297,21 +375,23 @@ export class CodePreview extends HTMLElement {
     // finished loading yet. Sizing an empty frame costs nothing and measures nothing —
     // `measure` sits behind `loaded`.
     this.fit()
-    this.render(this.source)
+    this.render()
 
     this.watchTheme()
 
     const widths = [...new Set(list(this.getAttribute('viewport-widths')).map(Number).filter((width) => width > 0))]
     if (widths.length) this.buildBar(widths)
 
-    if (this.editable) this.attachEditor()
+    this.attachEditors()
     // A block that arrived plain — hand-written markup rather than a fence some site
     // generator already highlighted — gets highlighted here. Blocks that came
     // pre-highlighted keep exactly what they have: re-running hljs is work for an
     // identical result, and any version skew would show up as the whole block
     // reshuffling on load. Last, and after the preview is already wired, so a
     // highlighting problem costs color and not the demo.
-    if (!code.querySelector('span')) this.highlight(code)
+    for (const pane of this.panes.values()) {
+      if (pane.code && !pane.code.querySelector('span')) this.highlight(pane.code, pane.language)
+    }
 
     // Last of all, and only when the markup says there is a manifest to read: the panel
     // is a second bundle's job, and everything it needs — the code block, the bar, the
@@ -321,9 +401,10 @@ export class CodePreview extends HTMLElement {
 
   attributeChangedCallback(name: string, before: string | null, after: string | null): void {
     if (before === after) return
-    // Nobody to tell until the options bundle has built a panel — which reads the
-    // attribute itself when it does, so an initial `tab="options"` is not missed.
     if (name === 'tab') {
+      this.syncPanes()
+      // Nobody else to tell until the options bundle has built a panel — which reads the
+      // attribute itself when it does, so an initial `tab="options"` is not missed.
       this.onPanelSync?.()
       return
     }
@@ -333,6 +414,180 @@ export class CodePreview extends HTMLElement {
     this.syncBar()
     this.peak = 0
     this.fit()
+  }
+
+  // Every fence in the markup becomes a pane, in document order. One fence is the case
+  // this element was written for and stays exactly what it was: a single pane, no strip,
+  // nothing hidden.
+  //
+  // Two queries per block, not one selector list: a list returns the first match in *tree*
+  // order, so `'pre code, pre'` hands back the `<pre>` every time — which then gets hljs
+  // run over markup containing a `<code>` child, and has its classes overwritten. The
+  // `<code>` is what holds the sample; the `<pre>` is the fallback for markup that has none.
+  private collectPanes(): void {
+    for (const block of this.querySelectorAll<HTMLElement>('pre')) {
+      const code = block.querySelector<HTMLElement>(':scope > code') ?? block
+      const language = /language-([\w-]+)/.exec(code.className)?.[1]?.toLowerCase() ?? 'html'
+      // A language with no pane of its own keeps its own name, so a group can carry a
+      // `scss` block beside the css it compiles to. A second fence in a language that
+      // already has a pane gets a numbered one — `css2` — rather than being skipped:
+      // skipped left the block permanently visible under whichever pane was showing,
+      // since only registered panes are hidden. Read-only, because `sources` reads the
+      // first; `editable` is what knows that.
+      const base = PANE_OF[language] ?? language
+      let name = base
+      for (let n = 2; this.panes.has(name); n++) name = base + n
+      const panel = this.panelOf(code)
+      if (!panel) continue
+      this.addPane(name, panel, code, language)
+    }
+    // The markup pane is the sample, and everything that predates the other two — the
+    // `source` accessor, the editor's label, the options panel's idea of what it is
+    // editing — still means this one.
+    const markup = this.panes.get('code')
+    this.code = markup?.code
+    this.language = markup?.language ?? 'html'
+  }
+
+  /**
+   * Add a pane and its tab. Public because the options bundle registers its panel this
+   * way — the strip is the element's, so that four panes and two panes are the same code.
+   *
+   * The tab is built here and wired up in `buildTablist`, which is where the difference
+   * between one pane and several is decided: a lone code block is not a tabpanel, has no
+   * tab pointing at it and gets no strip, because a page with one sample on it is what
+   * this element was before any of this and has to stay.
+   */
+  addPane(name: string, panel: HTMLElement, code?: HTMLElement, language?: string): void {
+    if (this.panes.has(name)) return
+
+    const tab = document.createElement('button')
+    tab.type = 'button'
+    tab.className = 'code-preview-tab'
+    tab.id = `${this.uid}-${name}-tab`
+    tab.dataset.tab = name
+    tab.setAttribute('role', 'tab')
+    // The attribute is the state, exactly as `viewport-width` is: a click, a script and
+    // hand-written markup all arrive at the same place.
+    tab.addEventListener('click', () => this.setAttribute('tab', name))
+
+    this.panes.set(name, { name, panel, tab, code, language })
+    this.buildTablist()
+    this.syncPanes()
+  }
+
+  // The strip appears with the second pane and not before — one pane has nothing to
+  // switch between, and a tab strip over a single code block is chrome for its own sake.
+  //
+  // Labels are decided here rather than at registration because the answer changes as
+  // panes arrive: a lone code pane says `Code`, the way it always has, and only a group
+  // that actually has more than one says which language each is.
+  private buildTablist(): void {
+    if (this.panes.size < 2) return
+
+    if (!this.tablist) {
+      const tablist = document.createElement('div')
+      tablist.className = 'code-preview-tabs'
+      tablist.setAttribute('role', 'tablist')
+      tablist.setAttribute('aria-label', 'Sample')
+      tablist.addEventListener('keydown', this.onTabKey)
+      // Prepended, so the tabs sit at the start of the bar whether or not
+      // `viewport-widths` has already put its buttons in it.
+      this.toolbar.prepend(tablist)
+      this.tablist = tablist
+      // What the stylesheet keys the hiding off, so that it does not depend on this
+      // script having found the right box to put `hidden` on — a copy-button script that
+      // runs later wraps that box, and the wrapper would stay.
+      this.classList.add('is-tabbed')
+    }
+
+    const coded = [...this.panes.values()].filter((pane) => pane.code).length
+    for (const pane of this.panes.values()) {
+      pane.tab.textContent = pane.code
+        ? (coded > 1 ? PANE_LABEL[pane.name] ?? pane.name.toUpperCase() : 'Code')
+        : pane.name.replace(/^./, (first) => first.toUpperCase())
+      if (pane.tab.parentElement !== this.tablist) this.tablist.appendChild(pane.tab)
+
+      // Everything below is the pairing, and it is done once — the first time this pane
+      // finds itself in a strip. The panel keeps an id it arrived with: a docs page may
+      // already be linking to that block, and swapping in a generated one breaks a link
+      // that used to work.
+      if (pane.panel.dataset.pane) continue
+      if (!pane.panel.id) pane.panel.id = `${this.uid}-${pane.name}`
+      pane.panel.dataset.pane = pane.name
+      pane.panel.setAttribute('role', 'tabpanel')
+      pane.panel.setAttribute('aria-labelledby', pane.tab.id)
+      pane.tab.setAttribute('aria-controls', pane.panel.id)
+      // Find-in-page reveals a pane hidden `until-found` on its own; this is how the strip
+      // hears about it and stops disagreeing with it. The reader searched for a line of a
+      // sample, so the sample is what they get, on the tab that holds it.
+      pane.panel.addEventListener('beforematch', () => this.setAttribute('tab', pane.name))
+    }
+  }
+
+  // Which pane is showing. An unknown `tab` falls back to the first rather than to
+  // nothing, so a typo costs the reader a tab and not the sample.
+  private get pane(): string {
+    const wanted = this.getAttribute('tab') ?? 'code'
+    if (this.panes.has(wanted)) return wanted
+    return this.panes.keys().next().value ?? 'code'
+  }
+
+  private syncPanes(): void {
+    if (this.panes.size < 2) return
+    const current = this.pane
+
+    // Focus cannot be left in the pane about to be hidden. Hiding the element focus is in
+    // drops it on the body, and a keyboard user's next Tab starts again from the top of
+    // the page — for a screen reader that is the whole document between them and the
+    // widget they were just in. The tab they switched *to* is where it goes, which is
+    // where a click would have left it anyway, so the two paths agree.
+    //
+    // Only when focus really was in there: clicking a tab and arrowing to one have both
+    // already focused the button by the time this runs, and find-in-page reveals a pane
+    // with focus still on the body. This is for the third caller, a script or an author's
+    // markup writing `tab` while the reader is in an editor.
+    for (const pane of this.panes.values()) {
+      if (pane.name !== current && pane.panel.contains(document.activeElement)) {
+        this.panes.get(current)?.tab.focus()
+        break
+      }
+    }
+
+    for (const pane of this.panes.values()) {
+      const on = pane.name === current
+      pane.tab.setAttribute('aria-selected', String(on))
+      // Roving tabindex: one tab stop for the whole list, arrows move within it.
+      pane.tab.tabIndex = on ? 0 : -1
+      showPane(pane.panel, on)
+    }
+
+    // Whether what is showing is a code block or the options panel. The stylesheet needs
+    // the answer for the editor's keyboard hint — which describes an editor, and so has no
+    // business being on screen on a tab that has none — and only this side knows it.
+    this.classList.toggle('is-code-pane', !!this.panes.get(current)?.code)
+  }
+
+  // Automatic activation, which is what the APG asks for wherever showing a panel costs
+  // nothing — every pane is already in the page. Arrows wrap, as they do in every other
+  // APG list, and a modifier held down means the key was meant for the browser.
+  private onTabKey = (event: KeyboardEvent): void => {
+    const tabs = [...this.panes.values()].map((pane) => pane.tab)
+    const from = tabs.indexOf(document.activeElement as HTMLButtonElement)
+    if (from < 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+    const to = event.key === 'ArrowLeft'
+      ? (from + tabs.length - 1) % tabs.length
+      : event.key === 'ArrowRight'
+        ? (from + 1) % tabs.length
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? tabs.length - 1
+            : -1
+    if (to < 0) return
+    event.preventDefault()
+    tabs[to].focus()
+    tabs[to].click()
   }
 
   // The strip above the preview, made on demand and shared. Whatever ends up in it —
@@ -399,8 +654,10 @@ export class CodePreview extends HTMLElement {
     this.theme?.disconnect()
     if (this.raf) cancelAnimationFrame(this.raf)
     if (this.timer) clearTimeout(this.timer)
-    this.jar?.destroy()
-    this.jar = undefined
+    for (const pane of this.panes.values()) {
+      pane.jar?.destroy()
+      pane.jar = undefined
+    }
     // The frame and the code block survive — they are dom, and this element may be
     // going straight back in. What does not survive is the loaded document: moving an
     // iframe reloads it, and a patch written before that load lands in the old one.
@@ -409,6 +666,13 @@ export class CodePreview extends HTMLElement {
 
   get source(): string {
     return this.code?.textContent ?? ''
+  }
+
+  // What the frame is built out of, read fresh: the editors write into the blocks, so the
+  // blocks are the state and there is no copy of it to keep in step.
+  private sources(): Sources {
+    const text = (name: string): string => this.panes.get(name)?.code?.textContent ?? ''
+    return { html: text('code'), css: text('css'), js: text('js') }
   }
 
   // Replace the sample, from outside the editor. The options panel's attribute knobs
@@ -421,24 +685,31 @@ export class CodePreview extends HTMLElement {
   // color and the preview all follow from the one call. Without a jar (`no-edit`)
   // there is nothing listening, so all three are done by hand.
   set source(src: string) {
-    const code = this.code
-    if (!code || src === this.source) return
-    if (this.jar) {
-      this.jar.updateCode(src)
+    const pane = this.panes.get('code')
+    if (!pane?.code || src === this.source) return
+    if (pane.jar) {
+      pane.jar.updateCode(src)
     } else {
-      code.textContent = src
-      this.highlight(code)
-      this.schedule(src)
+      pane.code.textContent = src
+      this.highlight(pane.code, pane.language)
+      this.schedule()
     }
   }
 
   // The box a tab hides: the `<pre>`, or the `.code-wrap` a copy-button script wrapped
   // it in. Walked up from the block rather than queried, because what sits between the
-  // two is the host page's business and there is no list of wrappers to keep.
-  get codePanel(): HTMLElement | undefined {
-    let node = this.code
+  // two is the host page's business and there is no list of wrappers to keep — which is
+  // also why the blocks are found at any depth and not as direct children.
+  private panelOf(code?: HTMLElement): HTMLElement | undefined {
+    let node = code
     while (node && node.parentElement !== this) node = node.parentElement ?? undefined
     return node
+  }
+
+  // The markup pane's box. Kept as the name it had: the options bundle asks for it, and
+  // the sample is what it means.
+  get codePanel(): HTMLElement | undefined {
+    return this.panelOf(this.code)
   }
 
   // The frame's document, once it holds one of ours. The options panel reads computed
@@ -491,38 +762,98 @@ export class CodePreview extends HTMLElement {
   // them: the first paint goes through srcdoc and works, and then the first keystroke
   // patches, drops the script on the floor and leaves the demo rendered but dead, with
   // nothing in the console to say why.
-  private render(src: string): void {
+  private render(): void {
     const frame = this.frame
-    if (!frame || src === this.rendered) return
-    this.rendered = src
+    if (!frame) return
+    const next = this.sources()
+    const last = this.rendered
+    if (last && last.html === next.html && last.css === next.css && last.js === next.js) return
+    this.rendered = next
     delete this.dataset.error
     // The sample itself changed, so the last measurement no longer describes it — an
     // edit that deletes half the markup has to be able to shrink the preview back.
     this.peak = 0
+
+    // A css-only edit is the cheapest of the three and by far the most common while
+    // someone is working on a look: the sample's stylesheet is one element in a head this
+    // element put there, so the edit is a write to its text. Nothing reloads, nothing is
+    // reparsed, and the sample keeps every bit of the state a rebuild would cost it —
+    // a script's variables, an open menu, the control the reader had focused.
+    if (this.cssOnly(next, last)) {
+      this.applySampleStyle(next.css)
+      this.fit()
+      return
+    }
+
     // `loaded` is the guard that matters, and the presence of `doc.body` is not:
     // a fresh iframe already holds an about:blank document with a body, so
     // patching before the first real load writes the sample into a blank page —
     // no stylesheet, no load event, and therefore no sizing either.
-    const patchable = this.loaded && !isDocument(src) && !this.reloads(src)
+    const patchable = this.loaded && !isDocument(next.html) && !this.reloads(next)
     if (patchable) {
-      this.frame!.contentDocument!.body.innerHTML = src
+      // Head is untouched by the body write, so a css edit that debounced in alongside
+      // the markup one — typed on one tab, then the other, inside the same 250ms — has
+      // to be carried over by hand, or `rendered` records it as applied and it is lost
+      // until something else forces a reload.
+      if (last && last.css !== next.css) this.applySampleStyle(next.css)
+      this.frame!.contentDocument!.body.innerHTML = next.html
       this.fit()
     } else {
       this.loaded = false
-      frame.srcdoc = buildSrcdoc(src, this.assets)
+      frame.srcdoc = buildSrcdoc(next.html, { ...this.assets, style: next.css, script: next.js })
     }
+  }
+
+  // The css pane's stylesheet inside a frame that is already up. Created if the frame was
+  // built before there was any css to put in it, and always before the options panel's own
+  // sheet, which is appended last so that a knob the reader turns outranks the sample.
+  private applySampleStyle(css: string): void {
+    const doc = this.frameDocument
+    if (!doc) return
+    let style = doc.getElementById('code-preview-sample') as HTMLStyleElement | null
+    if (!style) {
+      style = doc.createElement('style')
+      style.id = 'code-preview-sample'
+      doc.head.insertBefore(style, doc.getElementById('code-preview-options'))
+    }
+    style.textContent = css
   }
 
   // Whether this edit costs a reload rather than a patch. One predicate for both the
   // decision and the debounce in front of it: they were written apart once, and an edit
   // that reloads on a patch's delay is one reload per keystroke.
-  private reloads(src: string): boolean {
-    return this.assets.js.length > 0 || hasScript(src) || this.hasAttribute('reload')
+  //
+  // A js pane counts for the same reason a url in `js` does — see `render` — and it counts
+  // even while the reader is editing the markup, because patching the body leaves the
+  // script that already ran holding elements that are no longer in the document. A whole
+  // document counts because `render` can only rebuild it — it was always rebuilt, but on
+  // the patch's short leash, which is the one-reload-per-keystroke this list exists to
+  // prevent.
+  private reloads(next: Sources): boolean {
+    return this.assets.js.length > 0 || !!next.js.trim() || hasScript(next.html) ||
+      this.hasAttribute('reload') || isDocument(next.html)
   }
 
-  private schedule(src: string): void {
+  // Whether this edit is a write to the sample's stylesheet and nothing else. One
+  // predicate for the decision and the debounce in front of it, for the same reason
+  // `reloads` is one: written apart, the debounce called a document sample's css edit
+  // cheap while `render` reloaded it — one reload per keystroke, on the short delay.
+  // `isDocument` is part of it because a sample that owns its whole document owns its
+  // head, and there is no `<style>` of ours in there to write to.
+  //
+  // `last` is a parameter because `render` has already overwritten `this.rendered` by
+  // the time it asks — it compares against the copy it took first.
+  private cssOnly(next: Sources, last = this.rendered): boolean {
+    return !!last && this.loaded && last.html === next.html && last.js === next.js && !isDocument(next.html)
+  }
+
+  private schedule(): void {
     if (this.timer) clearTimeout(this.timer)
-    this.timer = setTimeout(() => this.render(src), this.reloads(src) ? RELOAD_DELAY : PATCH_DELAY)
+    const next = this.sources()
+    // A css-only edit is neither a reload nor a patch, and it is the one an author makes
+    // in bursts — the shorter delay is the one that makes it feel live.
+    const delay = !this.cssOnly(next) && this.reloads(next) ? RELOAD_DELAY : PATCH_DELAY
+    this.timer = setTimeout(() => this.render(), delay)
   }
 
   private onFrameLoad(): void {
@@ -639,9 +970,28 @@ export class CodePreview extends HTMLElement {
   }
 
   // Asked twice — building the element, and again if it is moved in the dom, which
-  // tears the editor down and has to put it back.
-  private get editable(): boolean {
-    return !this.hasAttribute('no-edit') && EDITABLE.test(this.language)
+  // tears the editors down and has to put them back.
+  private editable(pane: Pane): boolean {
+    if (this.hasAttribute('no-edit') || !pane.code || !EDITABLE.test(pane.language ?? '')) return false
+    // Only the pane the frame is built from: a second fence in the same language has a
+    // tab under a numbered name, but `sources` reads the first — an editor on the second
+    // would take keystrokes and render none of them.
+    if (PANE_OF[pane.language ?? ''] !== pane.name) return false
+    // A sample that owns its whole document owns its head and body: `buildSrcdoc` hands
+    // it back untouched, so a css or js pane has nowhere to land — read-only is the
+    // honest version of an editor that changes nothing.
+    // ponytail: judged when editors attach — markup edited *into* a full document later
+    // keeps the editors it has. The sample itself still reloads correctly either way.
+    return pane.name === 'code' || !isDocument(this.source)
+  }
+
+  // Which pane an event happened in. The listeners are on the host, so every one of them
+  // has to ask — an Escape pressed on a width button is not an Escape in an editor.
+  private paneAt(node: EventTarget | null): Pane | undefined {
+    for (const pane of this.panes.values()) {
+      if (pane.code?.contains(node as Node)) return pane
+    }
+    return undefined
   }
 
   // CodeJar rather than a bare contenteditable: recoloring on every keystroke means
@@ -653,13 +1003,19 @@ export class CodePreview extends HTMLElement {
   // What it does not bring is any of the accessibility a text field gets for free: the
   // block it leaves behind is editable and nothing else — no role, no name, no way back
   // out by keyboard. `describeEditor` and `releaseTab` are the two halves of that.
-  private attachEditor(): void {
-    const code = this.code
-    if (!code || this.jar) return
-    this.jar = CodeJar(code, (element) => this.highlight(element), { tab: '  ' })
-    this.jar.onUpdate((src) => this.schedule(src))
-    this.describeEditor(code)
-    // Capture, and on the host rather than the block: a listener added to the block
+  private attachEditors(): void {
+    let any = false
+    for (const pane of this.panes.values()) {
+      if (pane.jar || !this.editable(pane)) continue
+      pane.jar = CodeJar(pane.code!, (element) => this.highlight(element, pane.language), { tab: '  ' })
+      // The text is read back off the blocks, so which pane reported the keystroke does
+      // not matter — only that one of them did.
+      pane.jar.onUpdate(() => this.schedule())
+      this.describeEditor(pane)
+      any = true
+    }
+    if (!any) return
+    // Capture, and on the host rather than the blocks: a listener added to a block
     // itself runs after CodeJar's, which has already called `preventDefault` on the
     // Tab by then. Both are stable references, so reconnecting cannot double them up.
     this.addEventListener('keydown', this.releaseTab, true)
@@ -683,16 +1039,17 @@ export class CodePreview extends HTMLElement {
   // CodeJar's own option is flipped rather than the key intercepted, because Shift+Tab
   // has to escape backwards too, and outdent is its handler and not ours.
   private releaseTab = (event: KeyboardEvent): void => {
-    // Only a key pressed in the editor: the listener is on the host, so an Escape in the
+    // Only a key pressed in an editor: the listener is on the host, so an Escape in the
     // options panel or on a width button would otherwise flip the editor's Tab handling —
     // and rewrite a hint about an editor the reader is not in.
-    if (!this.code?.contains(event.target as Node)) return
+    const pane = this.paneAt(event.target)
+    if (!pane) return
     // Clicked in, then started typing: someone who arrived by pointer is a keyboard user
     // now, and the next Tab indents on them like everyone else's. Late is the right time
     // for the hint to turn up; never is not.
     this.classList.add('is-key-focus')
     if (event.key !== 'Escape' || event.defaultPrevented) return
-    this.jar?.updateOptions({ catchTab: false })
+    pane.jar?.updateOptions({ catchTab: false })
     // Pressing Escape is otherwise silent, and a key that appears to do nothing is a key
     // nobody presses twice. The hint is already on screen, so saying it there costs a
     // string and no layout.
@@ -703,15 +1060,17 @@ export class CodePreview extends HTMLElement {
   // not gated with it: a screen reader is a keyboard, and the description is read on
   // arrival either way.
   private showHint = (event: FocusEvent): void => {
-    if (!this.code?.contains(event.target as Node)) return
+    if (!this.paneAt(event.target)) return
     this.classList.toggle('is-key-focus', keyboardIntent)
   }
 
-  // Focus leaving anything in the element, which is a superset of focus leaving the
-  // editor — harmless, because a move within it fires the `focusin` above straight after.
+  // Focus leaving anything in the element, which is a superset of focus leaving an
+  // editor — harmless, because a move within one fires the `focusin` above straight after.
+  // Every editor is re-armed and not only the one being left: they share the hint, so they
+  // have to agree about what it says.
   private catchTab = (): void => {
     this.classList.remove('is-key-focus')
-    this.jar?.updateOptions({ catchTab: true })
+    for (const pane of this.panes.values()) pane.jar?.updateOptions({ catchTab: true })
     if (this.hint) this.hint.textContent = TAB_CAUGHT
   }
 
@@ -729,14 +1088,15 @@ export class CodePreview extends HTMLElement {
   // two different things — `aria-describedby` says it on focus for a screen reader,
   // and the stylesheet shows the same element while the block has focus, because a
   // sighted keyboard user is just as stuck and hears nothing.
-  private describeEditor(code: HTMLElement): void {
+  private describeEditor(pane: Pane): void {
+    const code = pane.code!
     code.setAttribute('role', 'textbox')
     code.setAttribute('aria-multiline', 'true')
     // The one key in here that is not a key anywhere else. A shortcut that exists only in
     // a description is a shortcut nobody can look up; this is the field made for it.
     code.setAttribute('aria-keyshortcuts', 'Escape')
     if (!code.hasAttribute('aria-label') && !code.hasAttribute('aria-labelledby')) {
-      code.setAttribute('aria-label', `Editable ${this.language} sample`)
+      code.setAttribute('aria-label', `Editable ${pane.language} sample`)
     }
     let hint = this.hint
     if (!hint) {
@@ -759,8 +1119,8 @@ export class CodePreview extends HTMLElement {
   // Shared by the first paint and every keystroke after it. Looked up per call
   // rather than captured, so the lite build can be handed a highlighter after the
   // page has loaded one.
-  private highlight(element: HTMLElement): void {
-    CodePreview.highlighter?.(element, this.language)
+  private highlight(element: HTMLElement, language = this.language): void {
+    CodePreview.highlighter?.(element, language)
   }
 }
 

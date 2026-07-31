@@ -204,6 +204,32 @@ Inline `<script>` means every edit rebuilds the frame rather than patching it â€
 
 </code-preview>
 
+## Several fences, several tabs
+
+Markup, css and js written as the three fences they are become three tabs â€” the
+language read off each fence, nothing to configure. The js pane forces the same reload
+an inline `<script>` does; the css pane never costs one, because an edit there is a
+write into the frame's stylesheet. Click the button a few times, then restyle it on the
+CSS tab and watch the count survive.
+
+<code-preview style="--code-preview-height: 70px">
+
+```html
+<button id="go">Click me</button>
+<p id="out"></p>
+```
+
+```css
+button { padding: 0.4rem 1rem; }
+```
+
+```js
+let n = 0
+go.onclick = () => out.textContent = `clicked ${++n}`
+```
+
+</code-preview>
+
 ## Read-only
 
 `no-edit` renders the preview and leaves the code alone.

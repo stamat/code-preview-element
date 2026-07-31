@@ -372,14 +372,6 @@ function loadManifest(url: string): Promise<Manifest> {
   return pending
 }
 
-// Ids have to be unique on the page: a tab points at its panel with `aria-controls` and
-// the panel points back with `aria-labelledby`, and a docs page has many of both.
-let uid = 0
-
-// Everything that can hold focus without being given a tab stop. The same list
-// `<tabs-elemental>` uses next door, and for the same question.
-const FOCUSABLE = 'a[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]'
-
 // An event this sample has not fired yet — and the state every count goes back to when the
 // frame is rebuilt, since that is a new document with a new sample in it.
 const NEVER = '—'
@@ -423,158 +415,36 @@ function paint(token: { text: string, cls?: string }): Node | string {
   return span
 }
 
-// Show or hide one of the two panes.
-//
-// Hidden is `until-found` rather than a bare `hidden`, so find-in-page still searches the
-// pane nobody is looking at — the sample is the main thing a reader ctrl-Fs for on a docs
-// page, and a tab strip that takes it out of reach of the browser's own search would be a
-// step backwards from the plain code block this replaces. The stylesheet is what actually
-// collapses it, since a browser with no `until-found` support leaves an unknown `hidden`
-// value visible.
-//
-// The tab stop is the other half: a pane with nothing focusable in it cannot be reached by
-// keyboard, and so cannot be scrolled either. That is the APG's answer and it is only for
-// that case — an editable code block is already focusable, and so is a panel full of
-// controls, and a second stop on either would be one to Tab past for nothing.
-function showPane(pane: HTMLElement, on: boolean): void {
-  if (!on) {
-    pane.setAttribute('hidden', 'until-found')
-    pane.removeAttribute('tabindex')
-    return
-  }
-  pane.removeAttribute('hidden')
-  if (pane.querySelector(FOCUSABLE)) pane.removeAttribute('tabindex')
-  else pane.tabIndex = 0
-}
-
 // Built once per element, and only ever from `buildOptions`.
 const panelled = new WeakSet<CodePreview>()
 
 export function buildOptions(host: CodePreview): void {
   const url = host.getAttribute('manifest')
-  const codePanel = host.codePanel
-  if (!url || !codePanel || panelled.has(host)) return
+  // No sample means no tab strip worth building, and nothing for the controls to write
+  // their attributes into.
+  if (!url || !host.codePanel || panelled.has(host)) return
   panelled.add(host)
-
-  // What the stylesheet keys the code block's `display: none` off, so that hiding it does
-  // not depend on this script having found the right box to put `hidden` on — a
-  // copy-button script that runs later wraps that box, and the wrapper would stay.
-  host.classList.add('is-tabbed')
-
-  const id = `code-preview-${++uid}`
-
-  // The code block becomes a tabpanel in place. Its own id is kept if it has one: a docs
-  // page may already be linking to that block, and taking the anchor away to write a
-  // generated one breaks a link that used to work.
-  if (!codePanel.id) codePanel.id = `${id}-code`
-  codePanel.setAttribute('role', 'tabpanel')
-  codePanel.setAttribute('aria-labelledby', `${id}-code-tab`)
 
   const panel = document.createElement('div')
   panel.className = 'code-preview-options'
-  panel.id = `${id}-options`
-  panel.setAttribute('role', 'tabpanel')
-  panel.setAttribute('aria-labelledby', `${id}-options-tab`)
   host.appendChild(panel)
-
-  // Find-in-page reveals a pane hidden `until-found` on its own; this is how the tab strip
-  // hears about it and stops disagreeing with it. The reader searched for a line of the
-  // sample, so the sample is what they get, on the tab that holds it.
-  codePanel.addEventListener('beforematch', () => host.setAttribute('tab', 'code'))
-  panel.addEventListener('beforematch', () => host.setAttribute('tab', 'options'))
-
-  // Real APG tabs, unlike the width buttons — those deliberately stayed plain buttons
-  // with `aria-pressed`, because they switch no panels and the richer role would oblige
-  // arrow-key handling they do not need to be usable. These do switch panels.
-  const tablist = document.createElement('div')
-  tablist.className = 'code-preview-tabs'
-  tablist.setAttribute('role', 'tablist')
-  tablist.setAttribute('aria-label', 'Code and options')
-
-  // `controls` is passed rather than derived: the code block may have arrived with an id
-  // of its own, which it keeps, and a tab pointing at the id it would have been given
-  // points at nothing at all.
-  const tabFor = (name: string, label: string, controls: HTMLElement): HTMLButtonElement => {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'code-preview-tab'
-    button.id = `${id}-${name}-tab`
-    button.textContent = label
-    button.dataset.tab = name
-    button.setAttribute('role', 'tab')
-    button.setAttribute('aria-controls', controls.id)
-    // The attribute is the state, exactly as `viewport-width` is: a click, a script and
-    // hand-written markup all arrive at the same place.
-    button.addEventListener('click', () => host.setAttribute('tab', name))
-    return button
-  }
-
-  const tabs = [tabFor('code', 'Code', codePanel), tabFor('options', 'Options', panel)]
-  for (const tab of tabs) tablist.appendChild(tab)
-  // Prepended, so the tabs sit at the start of the bar whether or not `viewport-widths`
-  // has already put its buttons in it.
-  host.toolbar.prepend(tablist)
-
-  // Automatic activation, which is what the APG asks for wherever showing a panel costs
-  // nothing — both of these are already in the page. Arrows wrap, as they do in every
-  // other APG list, and a modifier held down means the key was meant for the browser.
-  tablist.addEventListener('keydown', (event) => {
-    const from = tabs.indexOf(document.activeElement as HTMLButtonElement)
-    if (from < 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
-    const to = event.key === 'ArrowLeft'
-      ? (from + tabs.length - 1) % tabs.length
-      : event.key === 'ArrowRight'
-        ? (from + 1) % tabs.length
-        : event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? tabs.length - 1
-            : -1
-    if (to < 0) return
-    event.preventDefault()
-    tabs[to].focus()
-    tabs[to].click()
-  })
+  // The strip, the ids, the roles, the roving tabindex and the arrow keys are the
+  // element's — this is one more pane beside the sample's own, and the only thing this
+  // bundle has to say about it is that it exists. `tab="options"` already works: the
+  // attribute was the state before either of us was involved.
+  host.addPane('options', panel)
 
   // Filled in once the manifest lands. Called at the two moments the host knows about —
   // the tab changing and the frame loading — which are the only ones where either half of
   // it has anything new to say: the controls are re-read from a source the reader may have
   // typed into, and the frame's listeners are put back on a document that is new.
+  //
+  // Unconditional, and not only while the panel is showing: an event fired while the
+  // reader is on the code tab still has to be counted, so the frame's listeners cannot
+  // wait for the panel to be looked at. Re-reading the controls costs nothing here — the
+  // values come from the sample either way.
   let refresh = (): void => {}
-
-  const sync = (): void => {
-    const options = (host.getAttribute('tab') ?? 'code') === 'options'
-    for (const tab of tabs) {
-      const selected = (tab.dataset.tab === 'options') === options
-      tab.setAttribute('aria-selected', String(selected))
-      // Roving tabindex: one tab stop for the whole list, arrows move within it.
-      tab.tabIndex = selected ? 0 : -1
-    }
-    // Focus cannot be left in the pane about to be hidden. Hiding the element focus is in
-    // drops it on the body, and a keyboard user's next Tab starts again from the top of
-    // the page — for a screen reader that is the whole document between them and the
-    // widget they were just in. The tab they switched *to* is where it goes, which is
-    // where a click would have left it anyway, so the two paths agree.
-    //
-    // Only when focus really was in there: clicking a tab and arrowing to one have both
-    // already focused the button by the time this runs, and find-in-page reveals a pane
-    // with focus still on the body. This is for the third caller, a script or an author's
-    // markup writing `tab` while the reader is in the editor.
-    const leaving = options ? codePanel : panel
-    if (leaving.contains(document.activeElement)) {
-      tabs.find((tab) => (tab.dataset.tab === 'options') === options)?.focus()
-    }
-    showPane(panel, options)
-    showPane(codePanel, !options)
-    // Unconditionally, and not only when the panel is showing: an event fired while the
-    // reader is on the code tab still has to be counted, so the frame's listeners cannot
-    // wait for the panel to be looked at. Re-reading the controls costs nothing here — the
-    // values come from the sample either way.
-    refresh()
-  }
-
-  host.onPanelSync = sync
-  sync()
+  host.onPanelSync = () => refresh()
 
   loadManifest(url).then((manifest) => {
     const declaration = pickDeclaration(manifest, host.source, host.getAttribute('manifest-tag'))

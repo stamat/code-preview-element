@@ -323,6 +323,11 @@ scripts run in document order, so the pane runs after every url in `js`.
 One fence is still one code block: no tab strip, no roles, nothing hidden. The markup
 pane is named `code` rather than `html`, so `tab="code"` keeps meaning the sample.
 
+Two more panes are read-only for the same nowhere-to-type reason: any fence beside a
+sample that is a whole document — it owns its head and body, so the element has no place
+in it to write a stylesheet or a script — and a second fence in a language that already
+has a pane, which gets a numbered tab (`CSS2`) while the frame is built from the first.
+
 ## The options panel
 
 A second tab beside the code, with controls generated from a

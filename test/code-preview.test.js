@@ -988,3 +988,172 @@ test('switching tabs leaves the preview alone', () => {
   assert.equal(element.querySelector('iframe'), frame, 'the frame was rebuilt')
   assert.equal(frame.getAttribute('srcdoc'), before, 'the frame was re-rendered')
 })
+
+// ---- A sample written as several fences ----
+//
+// The markup pane is still called `code`, so `tab="code"` and every page already using
+// this element mean what they always did — the css and the js are panes beside it.
+
+test('the css pane is last in head, and the js pane is a deferred module in body', () => {
+  const doc = buildSrcdoc('<p>hi</p>', {
+    css: ['lib.css'],
+    js: ['lib.js'],
+    style: '.a { color: red }',
+    script: 'document.title = "x"'
+  })
+
+  // The author's own stylesheet outranks both the library's and whatever `head` brought,
+  // which is only true if it comes after them.
+  assert.ok(doc.indexOf('<style id="code-preview-sample">') > doc.indexOf('lib.css'))
+  assert.match(doc, /<style id="code-preview-sample">\.a \{ color: red }<\/style>/)
+
+  // A module, and after the deferred bundle: a classic inline script runs while the
+  // parser is still going, and a sample that writes a property on a custom element that
+  // has not upgraded yet loses that write for good.
+  assert.match(doc, /<body><p>hi<\/p><script type="module">document\.title = "x"<\/script><\/body>/)
+  assert.ok(doc.indexOf('type="module"') > doc.indexOf('lib.js'))
+})
+
+test('a closing tag inside a pane cannot end the tag it is inlined into', () => {
+  const doc = buildSrcdoc('<p>hi</p>', {
+    head: '',
+    script: 'const end = "</script>"',
+    style: '/* </style> */'
+  })
+  assert.match(doc, /const end = "<\\\/script>"/)
+  assert.match(doc, /\/\* <\\\/style> \*\//)
+  // Nothing closed early: one script tag in, one script tag out.
+  assert.equal(doc.match(/<\/script>/g).length, 1)
+  assert.equal(doc.match(/<\/style>/g).length, 1)
+})
+
+const THREE_FENCES = `
+  <pre><code class="hljs language-html">&lt;p class="a"&gt;hi&lt;/p&gt;</code></pre>
+  <pre><code class="hljs language-css">.a { color: red }</code></pre>
+  <pre><code class="hljs language-js">document.title = "x"</code></pre>
+`
+
+test('three fences become three panes, and all three reach the frame', () => {
+  const element = mount('no-edit', THREE_FENCES)
+  const tabs = [...element.querySelectorAll('[role="tab"]')]
+
+  assert.deepEqual(tabs.map((tab) => tab.textContent), ['HTML', 'CSS', 'JS'])
+  assert.deepEqual(tabs.map((tab) => tab.dataset.tab), ['code', 'css', 'js'])
+
+  const srcdoc = element.querySelector('iframe').getAttribute('srcdoc')
+  assert.match(srcdoc, /<body><p class="a">hi<\/p>/)
+  assert.match(srcdoc, /<style id="code-preview-sample">\.a \{ color: red }<\/style>/)
+  assert.match(srcdoc, /<script type="module">document\.title = "x"<\/script>/)
+})
+
+test('the markup pane is the one showing, and the others are searchable rather than gone', () => {
+  const element = mount('no-edit', THREE_FENCES)
+  const panes = [...element.querySelectorAll('[data-pane]')]
+
+  assert.deepEqual(panes.map((pane) => pane.dataset.pane), ['code', 'css', 'js'])
+  assert.equal(panes[0].getAttribute('hidden'), null)
+  // `until-found`, not a bare `hidden`: a reader who ctrl-Fs a line of the css still
+  // finds it, and the strip switches to the tab holding it.
+  assert.equal(panes[1].getAttribute('hidden'), 'until-found')
+  assert.equal(panes[2].getAttribute('hidden'), 'until-found')
+
+  panes[1].dispatchEvent(new element.ownerDocument.defaultView.Event('beforematch'))
+  assert.equal(element.getAttribute('tab'), 'css')
+})
+
+test('source is still the markup pane, whatever else is beside it', () => {
+  const element = mount('no-edit', THREE_FENCES)
+  assert.equal(element.source, '<p class="a">hi</p>')
+})
+
+// The patch writes the body and leaves head alone — so a css edit that debounced in
+// alongside a markup one, typed on one tab and then the other inside the same window,
+// has to be carried over by hand. Without that, `rendered` records the css as applied
+// and the edit is silently lost until something else forces a reload.
+test('a css edit that debounces in with a markup edit is not dropped by the patch', async() => {
+  const element = mount('', `
+    <pre><code class="hljs language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>
+    <pre><code class="hljs language-css">.a { color: red }</code></pre>
+  `, { setup: (win) => { win.document.execCommand = () => true } })
+  const win = element.ownerDocument.defaultView
+  // Let the frame's load fire: `loaded` is what arms patching in the first place.
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  const [html, css] = element.querySelectorAll('code')
+  html.textContent = '<b>bye</b>'
+  css.textContent = '.a { color: blue }'
+  css.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
+  await new Promise((resolve) => setTimeout(resolve, 800))
+
+  const doc = element.frameDocument
+  assert.equal(doc.body.innerHTML, '<b>bye</b>', 'the markup patch never landed')
+  assert.equal(doc.getElementById('code-preview-sample')?.textContent, '.a { color: blue }',
+    'the css that rode along with the markup edit was dropped')
+})
+
+// A sample that owns its whole document owns its head and body — `buildSrcdoc` hands it
+// back untouched, so a css or js pane beside it has nowhere to land. An editor there
+// would take keystrokes and render none of them.
+test('a full-document sample keeps its markup editable, and the panes beside it read-only', () => {
+  const element = mount('', `
+    <pre><code class="hljs language-html">&lt;!DOCTYPE html&gt;&lt;html&gt;&lt;body&gt;hi&lt;/body&gt;&lt;/html&gt;</code></pre>
+    <pre><code class="hljs language-css">.a { color: red }</code></pre>
+  `, { setup: (win) => { win.document.execCommand = () => true } })
+  const editable = [...element.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable'))
+  assert.deepEqual(editable, ['true', null])
+})
+
+// Skipping the second fence left its block permanently visible under whichever pane was
+// showing — only registered panes are hidden. A numbered pane keeps it a tab like any
+// other; read-only, because the frame is built from the first.
+test('a second fence in the same language gets its own read-only tab, not a stray block', () => {
+  const element = mount('', `
+    <pre><code class="hljs language-html">&lt;p&gt;before&lt;/p&gt;</code></pre>
+    <pre><code class="hljs language-html">&lt;p&gt;after&lt;/p&gt;</code></pre>
+  `, { setup: (win) => { win.document.execCommand = () => true } })
+
+  const tabs = [...element.querySelectorAll('[role="tab"]')]
+  assert.deepEqual(tabs.map((tab) => tab.dataset.tab), ['code', 'code2'])
+  assert.equal([...element.querySelectorAll('[data-pane]')][1].getAttribute('hidden'), 'until-found')
+  const editable = [...element.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable'))
+  assert.deepEqual(editable, ['true', null])
+})
+
+// It was always rebuilt — `render` cannot patch a document that owns its head — but on
+// the patch's short leash: one reload per 250ms keystroke instead of 600.
+test('editing a whole-document sample debounces on the reload delay, not the patch one', async() => {
+  const element = mount('',
+    '<pre><code class="hljs language-html">&lt;!DOCTYPE html&gt;&lt;html&gt;&lt;body&gt;hi&lt;/body&gt;&lt;/html&gt;</code></pre>',
+    { setup: (win) => { win.document.execCommand = () => true } })
+  const win = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  let writes = 0
+  new win.MutationObserver((records) => { writes += records.length })
+    .observe(frame, { attributes: true, attributeFilter: ['srcdoc'] })
+
+  const code = element.querySelector('code')
+  code.textContent = '<!DOCTYPE html><html><body>bye</body></html>'
+  code.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
+
+  // Past the 250ms patch delay, short of the 600ms reload one.
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  assert.equal(writes, 0, 'a document sample rebuilt on the patch delay')
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  assert.equal(writes, 1, 'the edit never rendered')
+})
+
+test('every pane the frame can run gets an editor, and the rest stay read-only', () => {
+  const element = mount('', `
+    <pre><code class="hljs language-html">&lt;p&gt;hi&lt;/p&gt;</code></pre>
+    <pre><code class="hljs language-css">.a { color: red }</code></pre>
+    <pre><code class="hljs language-scss">.a { &amp;:hover { color: red } }</code></pre>
+  `)
+  const editable = [...element.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable'))
+
+  assert.deepEqual(editable, ['true', 'true', null])
+  // A language the frame cannot run is still worth showing beside the sample — it is
+  // just not something there is anywhere to type into.
+  assert.equal([...element.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent).at(-1), 'SCSS')
+})

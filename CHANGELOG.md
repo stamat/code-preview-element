@@ -35,7 +35,10 @@ shows up in a function signature.
   The languages are read off the `language-*` class a site generator already writes, so
   there is no new markup vocabulary — three fences in the markdown, three tabs on the page.
   Anything the frame cannot run (a `scss` block beside the css it compiles to) still gets a
-  tab, read-only.
+  tab, read-only. So does any fence beside a sample that is a whole document — it owns its
+  head and body, so there is nowhere in it to write the pane — and a second fence in a
+  language that already has one, under a numbered tab (`CSS2`), since the frame is built
+  from the first.
 
   **The js pane is inlined as `<script type="module">`**, and that is not about scoping. A
   classic inline script runs while the parser is still going, before the deferred bundles
