@@ -283,6 +283,36 @@ one type. Win it back from the host side:
 from its content, so a sample measured in viewport units would grow the frame, which
 grows the viewport, which grows the sample. The cap makes that converge.
 
+### Reserved height
+
+A preview's real height is its sample's, and nothing knows that until the frame has
+rendered. Every preview would therefore land after first paint and push whatever is
+below it down — the layout shift. So space is held for it before the element has
+upgraded and before the frame has loaded, from one variable:
+
+```css
+code-preview { --code-preview-height: 8rem; }        /* the default */
+```
+
+`--code-preview-bar-height` (default `2.25rem`) is the same for the `viewport-widths`
+bar, which is reserved alongside it.
+
+The default is a guess centred on real samples rather than a round number — it
+measured lowest across the demo page. Set it per element wherever the height is
+actually known, and there is nothing left to guess:
+
+```html
+<code-preview style="--code-preview-height: 320px"> … </code-preview>
+```
+
+Measured on the demo page, headless Chrome at 1200×900: CLS `0.0285` with the
+reservation at `4rem`, `0.0167` at `12rem`, `0.0022` at the `8rem` default.
+
+Caching measured heights in `localStorage` was tried and removed. It bought nothing
+over a well-centred reservation, and a key can only name a stylesheet's url, not its
+contents — so editing a sample's css left every returning reader holding a remembered
+height that was quietly wrong.
+
 ## Known limits
 
 - **HTML samples only.** Editing css or js separately means a run of fences per demo

@@ -140,6 +140,28 @@ test('the element renders through srcdoc, not into about:blank', () => {
   assert.equal(frame.getAttribute('scrolling'), 'no')
 })
 
+// Layout shift: the stylesheet reserves a height for the preview before there is one,
+// and a measurement taken before the frame has loaded would be the blank document's —
+// zero — which collapses that reservation and shifts the page twice over. jsdom never
+// loads a srcdoc, so this is exactly the pre-load state.
+test('nothing is measured before the frame has loaded', () => {
+  const viewport = mount().querySelector('.code-preview-viewport')
+  assert.equal(viewport.style.height, '', 'a blank frame was measured over the reserved height')
+})
+
+// Moving the element in the dom disconnects and reconnects it, and rebuilding on the
+// way back in would stack a second preview and a second width bar on the first.
+test('reconnecting moves the element rather than rebuilding it', () => {
+  const element = mount('viewport-widths="375 768"')
+  const body = element.ownerDocument.body
+
+  element.remove()
+  body.appendChild(element)
+
+  assert.equal(element.querySelectorAll('.code-preview-viewport').length, 1)
+  assert.equal(element.querySelectorAll('.code-preview-bar').length, 1)
+})
+
 test('a plain block gets highlighted, a pre-highlighted one is left alone', () => {
   // Hand-written markup: no spans, so the element runs hljs over it.
   const plain = mount('no-edit', '<pre><code class="language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>')

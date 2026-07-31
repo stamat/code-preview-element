@@ -147,10 +147,16 @@ export class CodePreview extends HTMLElement {
   private loaded = false
   // Pending measure, so a burst of resizes measures once.
   private raf = 0
-
   connectedCallback(): void {
-    // Moving the element in the dom re-runs this; build once.
-    if (this.frame) return
+    // Moving the element in the dom re-runs this; build once, or the move costs a
+    // second viewport and a second width bar stacked on the first. Only the theme
+    // observer has to come back — disconnecting stopped it, and moving an iframe
+    // reloads it, so the frame's own load event rebuilds everything downstream.
+    if (this.frame) {
+      this.watchTheme()
+      if (this.editable) this.attachEditor()
+      return
+    }
     // Two queries, not one selector list: a list returns the first match in *tree*
     // order, so `'pre code, pre'` hands back the `<pre>` every time — which then gets
     // hljs run over markup containing a `<code>` child, and has its classes
@@ -194,19 +200,20 @@ export class CodePreview extends HTMLElement {
     this.frame = frame
     this.viewport = viewport
 
+    // Width and scale before the first srcdoc, not after its load event: an emulated
+    // width applied to an already-painted frame renders the sample once at the column's
+    // width and then again scaled, which is a visible jump in a frame that has not
+    // finished loading yet. Sizing an empty frame costs nothing and measures nothing —
+    // `measure` sits behind `loaded`.
+    this.fit()
     this.render(this.source)
 
-    // Dark mode: the host page's [data-theme] is copied into the frame, under
-    // whatever attribute name the sample's stylesheet reads (`theme-attribute`).
-    // One observer per element rather than a shared one, so the element needs no
-    // page-level setup to be dropped in.
-    this.theme = new MutationObserver(() => this.syncTheme())
-    this.theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    this.watchTheme()
 
     const widths = list(this.getAttribute('viewport-widths')).map(Number).filter((width) => width > 0)
     if (widths.length) this.buildBar(widths)
 
-    if (!this.hasAttribute('no-edit') && EDITABLE.test(this.language)) this.attachEditor()
+    if (this.editable) this.attachEditor()
     // A block that arrived plain — hand-written markup rather than a fence some site
     // generator already highlighted — gets highlighted here. Blocks that came
     // pre-highlighted keep exactly what they have: re-running hljs is work for an
@@ -254,6 +261,16 @@ export class CodePreview extends HTMLElement {
     this.syncBar()
   }
 
+  // Dark mode: the host page's [data-theme] is copied into the frame, under whatever
+  // attribute name the sample's stylesheet reads (`theme-attribute`). One observer per
+  // element rather than a shared one, so the element needs no page-level setup to be
+  // dropped in. Re-armed on reconnect, since disconnecting is what stopped it.
+  private watchTheme(): void {
+    this.theme?.disconnect()
+    this.theme = new MutationObserver(() => this.syncTheme())
+    this.theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  }
+
   private syncBar(): void {
     const current = this.getAttribute('viewport-width') ?? ''
     this.bar?.querySelectorAll<HTMLButtonElement>('.code-preview-width').forEach((button) => {
@@ -268,7 +285,10 @@ export class CodePreview extends HTMLElement {
     if (this.timer) clearTimeout(this.timer)
     this.jar?.destroy()
     this.jar = undefined
-    this.frame = undefined
+    // The frame and the code block survive — they are dom, and this element may be
+    // going straight back in. What does not survive is the loaded document: moving an
+    // iframe reloads it, and a patch written before that load lands in the old one.
+    this.loaded = false
   }
 
   get source(): string {
@@ -376,7 +396,10 @@ export class CodePreview extends HTMLElement {
     const frame = this.frame
     const viewport = this.viewport
     const doc = frame?.contentDocument
-    if (!doc || !frame || !viewport) return
+    // Nothing to measure before the first load, and measuring anyway is worse than
+    // waiting: the blank document is 0 tall, which would collapse the reserved height
+    // the stylesheet is holding and shift the page twice instead of not at all.
+    if (!doc || !frame || !viewport || !this.loaded) return
 
     // The frame gets the sample's whole height, unscaled, so it has nothing to scroll.
     const content = Math.ceil(Math.max(doc.documentElement.getBoundingClientRect().height, doc.body?.scrollHeight ?? 0))
@@ -415,6 +438,12 @@ export class CodePreview extends HTMLElement {
     else doc.documentElement.removeAttribute(name)
   }
 
+  // Asked twice — building the element, and again if it is moved in the dom, which
+  // tears the editor down and has to put it back.
+  private get editable(): boolean {
+    return !this.hasAttribute('no-edit') && EDITABLE.test(this.language)
+  }
+
   // CodeJar rather than a bare contenteditable: recoloring on every keystroke means
   // replacing the block's innerHTML, which drops the caret and shreds the undo
   // stack. Restoring both through IME composition and Firefox's contenteditable
@@ -422,7 +451,7 @@ export class CodePreview extends HTMLElement {
   // plaintext paste, so this is less code here, not more.
   private attachEditor(): void {
     const code = this.code
-    if (!code) return
+    if (!code || this.jar) return
     this.jar = CodeJar(code, (element) => this.highlight(element), { tab: '  ' })
     this.jar.onUpdate((src) => this.schedule(src))
     this.classList.add('is-editable')

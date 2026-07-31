@@ -12,11 +12,36 @@ code-preview {
   margin: 1.75rem 0;
 }
 
+/* Space reserved for the preview before there is one, so upgrading the element and
+   loading the frame do not push the rest of the page down twice.
+
+   --code-preview-height is a guess by definition — the frame's real height is its
+   sample's, which nothing knows until it renders. Set it per element wherever that
+   height is known (`style="--code-preview-height: 320px"`) and it stops being a guess.
+   8rem as the default because it measured lowest in layout shift across the demo
+   page's samples — a guess centred on real ones rather than a round number. */
+code-preview:not(:defined)::before {
+  content: "";
+  display: block;
+  height: var(--code-preview-height, 8rem);
+}
+
+/* The bar is prepended by the same upgrade, so its height is part of the reservation.
+   Shared variable rather than a second guess: the bar below is sized to it. */
+code-preview:not(:defined)[viewport-widths]::before {
+  height: calc(var(--code-preview-height, 8rem) + var(--code-preview-bar-height, 2.25rem));
+}
+
 /* The width switcher, when `viewport-widths` asks for one. It sits on top of the
    preview and takes over the top border and corners, so the two stay one object. */
 code-preview .code-preview-bar {
   box-sizing: border-box;
   display: flex;
+  /* Declared rather than content-derived, so the reservation above matches it exactly
+     instead of approximating a button's line-height and padding. A minimum, not a
+     height: enough widths to wrap onto a second row must grow the bar, not be clipped
+     by it. */
+  min-height: var(--code-preview-bar-height, 2.25rem);
   flex-wrap: wrap;
   gap: 0.25rem;
   align-items: center;
@@ -58,8 +83,9 @@ code-preview .code-preview-width:focus-visible {
    max-height is load-bearing, not taste: the element sizes the frame from its own
    content height, so a sample measured in viewport units would grow the frame,
    which grows the viewport, which grows the sample. The cap makes it converge, and
-   scrolls whatever is past it. min-height covers the other end — the frame loads
-   lazily and has no height at all until it does. */
+   scrolls whatever is past it. The declared height covers the other end — the frame
+   loads lazily and has no height at all until it does, and the element overwrites
+   this with the measured one the moment it has it. */
 code-preview .code-preview-viewport {
   /* Declared, not inherited: the element measures the frame's content and then
      writes a height onto this box, which is only correct if the box counts its own
@@ -68,7 +94,9 @@ code-preview .code-preview-viewport {
   box-sizing: border-box;
   display: block;
   width: 100%;
-  min-height: 4rem;
+  /* Same variable the pre-upgrade reservation uses, so the box the element inserts is
+     exactly the box the page already made room for. */
+  height: var(--code-preview-height, 8rem);
   max-height: 70vh;
   margin: 0;
   overflow: hidden auto;
@@ -89,6 +117,11 @@ code-preview .code-preview-frame {
   box-sizing: border-box;
   display: block;
   width: 100%;
+  /* Until the element has measured the sample and writes a height inline, an iframe is
+     its own default 150px — taller than the reserved 8rem, which means a scrollbar in
+     the wrapper for as long as the frame takes to load. Filling the reservation is both
+     the right size and the right blank box. */
+  height: 100%;
   aspect-ratio: auto;
   margin: 0;
   border: 0;
