@@ -68,6 +68,16 @@ const DEFAULT_HEAD = '<style>body{margin:0;padding:1rem}</style>'
 const PATCH_DELAY = 250
 const RELOAD_DELAY = 600
 
+// The hint each editor is described by needs an id of its own, and a docs page has as
+// many editors as it has samples.
+let uid = 0
+
+// The two things Tab can be doing in there, said the same way to a screen reader and to
+// the screen. Named rather than inlined because the second one has to be able to say
+// that the first one is over.
+const TAB_CAUGHT = 'Press Esc, then Tab, to leave the editor'
+const TAB_FREE = 'Tab now leaves the editor'
+
 const list = (value: string | null): string[] => (value ?? '').split(/\s+/).filter(Boolean)
 
 const attr = (value: string): string => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -123,9 +133,22 @@ export function buildSrcdoc(
 ): string {
   if (isDocument(html)) return html
   const styles = (opts.css ?? []).map((href) => `<link rel="stylesheet" href="${attr(href)}">`).join('')
-  // Scripts last, so a library's stylesheet is in place before its js measures
-  // anything.
-  const scripts = (opts.js ?? []).map((src) => `<script src="${attr(src)}"></script>`).join('')
+  // Scripts last, so a library's stylesheet is in place before its js measures anything —
+  // and every one of them deferred, which is not a nicety.
+  //
+  // A custom element bundle in head runs *before* the body is parsed, so `define` is
+  // called first and the parser then upgrades each element the instant it opens its tag,
+  // with none of its light-DOM children parsed yet. Every element that reads its own
+  // children on connect — which is every element in a light-DOM library — finds nothing
+  // there and bails. The sample renders, the markup is right, and not one element is
+  // alive: the failure looks like a preview that is merely unresponsive, with nothing in
+  // the console to say so.
+  //
+  // `defer` is what those libraries already document as their own requirement ("loaded
+  // deferred or at the end of the body"), and it keeps execution order across several
+  // urls. An inline `<script>` inside the sample is unaffected — that is the author's,
+  // and it is in body where it was written.
+  const scripts = (opts.js ?? []).map((src) => `<script src="${attr(src)}" defer></script>`).join('')
   return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
     styles + (opts.head ?? DEFAULT_HEAD) + scripts +
     '</head><body>' + html + '</body></html>'
@@ -166,6 +189,9 @@ export class CodePreview extends HTMLElement {
   private theme?: MutationObserver
   private timer?: ReturnType<typeof setTimeout>
   private jar?: ReturnType<typeof CodeJar>
+  // The keyboard hint, once there is an editor to hint about. Kept because its text is
+  // the one thing that changes when Escape releases Tab.
+  private hint?: HTMLElement
   // Has the frame loaded a document of ours? Nothing may be patched before it has.
   private loaded = false
   // Pending measure, so a burst of resizes measures once.
@@ -178,6 +204,14 @@ export class CodePreview extends HTMLElement {
   // grows is the wrong trade for a sample whose height genuinely varies. Reset
   // wherever the size is *meant* to change: a new source, a new emulated width.
   private peak = 0
+  // The sample as the frame was last given it. CodeJar reports an update on every
+  // keyup, not only the ones that changed something — Escape, Tab, the arrows and every
+  // modifier arrive here saying the same text they said before — and rendering that
+  // reloads the frame's document for a sample that did not move. What a reload costs is
+  // everything live in there: a script's state, and the focus a keyboard user has put on
+  // a control inside the sample, which is the one thing a preview of an accessible
+  // component has to be able to hold still for.
+  private rendered?: string
   // The declarations the options panel has turned on, as one css rule's worth of text.
   // Kept here rather than in the panel because a rebuilt frame is a new document with a
   // new head, and re-applying it is `onFrameLoad`'s job.
@@ -432,7 +466,8 @@ export class CodePreview extends HTMLElement {
   // replacing whatever it initialised. Either one means a real reload.
   private render(src: string): void {
     const frame = this.frame
-    if (!frame) return
+    if (!frame || src === this.rendered) return
+    this.rendered = src
     delete this.dataset.error
     // The sample itself changed, so the last measurement no longer describes it — an
     // edit that deletes half the markup has to be able to shrink the preview back.
@@ -581,12 +616,90 @@ export class CodePreview extends HTMLElement {
   // stack. Restoring both through IME composition and Firefox's contenteditable
   // quirks is the reason that library exists. It also brings tab handling and
   // plaintext paste, so this is less code here, not more.
+  //
+  // What it does not bring is any of the accessibility a text field gets for free: the
+  // block it leaves behind is editable and nothing else — no role, no name, no way back
+  // out by keyboard. `describeEditor` and `releaseTab` are the two halves of that.
   private attachEditor(): void {
     const code = this.code
     if (!code || this.jar) return
     this.jar = CodeJar(code, (element) => this.highlight(element), { tab: '  ' })
     this.jar.onUpdate((src) => this.schedule(src))
+    this.describeEditor(code)
+    // Capture, and on the host rather than the block: a listener added to the block
+    // itself runs after CodeJar's, which has already called `preventDefault` on the
+    // Tab by then. Both are stable references, so reconnecting cannot double them up.
+    this.addEventListener('keydown', this.releaseTab, true)
+    this.addEventListener('focusout', this.catchTab, true)
     this.classList.add('is-editable')
+  }
+
+  // WCAG 2.1.2, no keyboard trap. Tab indents inside a code editor, which means it
+  // cannot also be the way out, and an editable block with no way out is the one
+  // accessibility failure this element could ship that has no workaround at all —
+  // a keyboard user who tabs in is stuck there for the rest of the page.
+  //
+  // Escape hands Tab back, the way every editor that keeps tab-to-indent does it, and
+  // leaving the block re-arms it, so coming back finds an editor that indents again.
+  // A rearm on blur rather than a second Escape toggling it: the failure mode of
+  // guessing wrong is being trapped again without being told, so the guess goes the
+  // other way every time.
+  //
+  // CodeJar's own option is flipped rather than the key intercepted, because Shift+Tab
+  // has to escape backwards too, and outdent is its handler and not ours.
+  private releaseTab = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return
+    this.jar?.updateOptions({ catchTab: false })
+    // Pressing Escape is otherwise silent, and a key that appears to do nothing is a key
+    // nobody presses twice. The hint is already on screen, so saying it there costs a
+    // string and no layout.
+    if (this.hint) this.hint.textContent = TAB_FREE
+  }
+
+  private catchTab = (): void => {
+    this.jar?.updateOptions({ catchTab: true })
+    if (this.hint) this.hint.textContent = TAB_CAUGHT
+  }
+
+  // What a screen reader is told this block is, and how to get back out of it.
+  //
+  // `role="textbox"` because a contenteditable is exposed inconsistently without one,
+  // and it also makes the highlighter's spans presentational — which is right: the
+  // sample is its text, and the colours are decoration. `aria-multiline` because the
+  // default for a textbox is a single line, and a code sample is not that.
+  //
+  // The name is left alone if the markup brought one: a docs page that has already
+  // labelled the block knows what the sample is better than a language name does.
+  //
+  // The hint is the WCAG 2.1.2 advisory, and it has to reach two audiences that need
+  // two different things — `aria-describedby` says it on focus for a screen reader,
+  // and the stylesheet shows the same element while the block has focus, because a
+  // sighted keyboard user is just as stuck and hears nothing.
+  private describeEditor(code: HTMLElement): void {
+    code.setAttribute('role', 'textbox')
+    code.setAttribute('aria-multiline', 'true')
+    // The one key in here that is not a key anywhere else. A shortcut that exists only in
+    // a description is a shortcut nobody can look up; this is the field made for it.
+    code.setAttribute('aria-keyshortcuts', 'Escape')
+    if (!code.hasAttribute('aria-label') && !code.hasAttribute('aria-labelledby')) {
+      code.setAttribute('aria-label', `Editable ${this.language} sample`)
+    }
+    let hint = this.hint
+    if (!hint) {
+      hint = document.createElement('p')
+      hint.className = 'code-preview-hint'
+      hint.id = `code-preview-hint-${++uid}`
+      // A live region, because the text is not only a description — it changes when
+      // Escape releases Tab, and a description is read when focus arrives and never
+      // again. `status` rather than `aria-live` spelled out: same politeness, one
+      // attribute. It only ever announces while the editor has focus, which is the
+      // only time the stylesheet shows it and the only time it can change.
+      hint.setAttribute('role', 'status')
+      hint.textContent = TAB_CAUGHT
+      this.appendChild(hint)
+      this.hint = hint
+    }
+    code.setAttribute('aria-describedby', hint.id)
   }
 
   // Shared by the first paint and every keystroke after it. Looked up per call

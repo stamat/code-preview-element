@@ -15,6 +15,85 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A sample's own elements never came alive** when `js` pointed at a custom element
+  bundle — which is most of what this element is for. The scripts went into `<head>`
+  undeferred, so `customElements.define` ran *before* the body was parsed and the parser
+  then upgraded each element the instant it opened its tag, with none of its light-DOM
+  children there yet. Every element that reads its own children on connect found nothing
+  and bailed.
+
+  The failure was silent and total: the sample rendered, the markup was right, the
+  stylesheet applied, nothing appeared in the console — and not one element was wired.
+  Native behaviour inside the sample (a `<details>` toggling) still worked, which is
+  exactly what made it read as "the preview is a bit unresponsive" rather than as a bug.
+  It also made the options panel look broken from the outside: its knobs were writing
+  correctly the whole time, into elements that were not listening.
+
+  `js` scripts now carry `defer`, which is what these libraries already document as their
+  requirement, and which keeps execution order across several urls. An inline `<script>`
+  in the sample is untouched — that one is the author's, and it is in body where they
+  wrote it.
+
+- **The editable code block was a keyboard trap.** Tab indents in there, which left a
+  keyboard user who tabbed in with nothing to press — [WCAG 2.1.2 Level
+  A](https://www.w3.org/WAI/WCAG22/Understanding/no-keyboard-trap.html), and the one
+  failure here with no workaround from the outside. **Esc now hands Tab back**: the next
+  Tab moves focus, and leaving the block re-arms it, so tab-to-indent is unchanged for
+  anyone who does not need to leave by keyboard.
+
+- **The editor says what it is.** CodeJar leaves a block that is editable and nothing
+  else, so the element now adds `role="textbox"`, `aria-multiline="true"`,
+  `aria-keyshortcuts="Escape"` and an `aria-label` naming the language. An `aria-label`
+  or `aria-labelledby` already on the block is left alone.
+
+- **The focus ring follows focus.** It hung off `code-preview:focus-within`, so clicking
+  a width button or a tab lit the code block up instead. It is now on the block.
+
+- **Switching tab no longer drops focus on the floor.** Setting `tab` from a script or
+  from markup while the reader was inside the pane being hidden left focus on an element
+  that was about to disappear, which the browser answers by moving it to the body — the
+  next Tab starts again at the top of the page, with the whole document between a screen
+  reader and the widget it was just in. Focus now moves to the tab being switched to,
+  which is where clicking or arrowing to that tab had already left it. Focus outside the
+  pane is not touched, so the frame's own load — which calls the same code — cannot yank a
+  reader into the tab strip.
+
+- **A keystroke that changed nothing reloaded the preview.** CodeJar reports an update on
+  every keyup, not only the ones that edited the text — the arrows, Tab, every modifier,
+  and now the Esc this element asks people to press — and each one rebuilt the frame a
+  quarter-second later for a sample that had not moved. That reload throws away everything
+  live inside the preview: a script's state, and the focus a keyboard user had put on a
+  control in there. So an accessible component could not be demonstrated in its own
+  preview — Tab into the frame, focus a control, and it vanished under you a moment later.
+  The frame is now rendered only when the source it would render has actually changed.
+
+  Editing the sample still rebuilds, and still costs whatever was live in there. That one
+  is the sample changing, which is the point.
+
+### Added
+
+- **A keyboard hint**, `<p class="code-preview-hint">`, appended to the element for every
+  editable sample: `Press Esc, then Tab, to leave the editor`, becoming `Tab now leaves
+  the editor` once Esc has been pressed. It is the `aria-describedby` of the editor and a
+  `role="status"` live region, so the same sentence reaches a screen reader and the
+  screen. The stylesheet keeps it invisible until the block has focus and positions it
+  absolutely, so it costs no layout — which is why `code-preview` is now
+  `position: relative`.
+
+  An editable block gets `padding-block-end: var(--code-preview-hint-space, 2.25rem)` to
+  hold the room the hint sits in. Reserved from upgrade rather than added on focus:
+  growing the block at the moment someone clicks into it would shift the page under their
+  cursor. Set `--code-preview-hint-space` to the block's normal padding to turn the
+  reservation off.
+
+  It is a child of the element rather than of the code block, because a copy-button script
+  that reads the block's `innerText` would otherwise put the sentence on the clipboard —
+  so the tab strip hides it itself, with `display: none` on any tab but `code`. Left
+  showing it would be a live region describing an editor the reader has switched away
+  from.
+
 ## [0.2.0] - 2026-07-31
 
 ### Added

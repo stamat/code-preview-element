@@ -87,10 +87,22 @@ test('the frame document is a real document, with the assets in it', () => {
 
   assert.ok(doc.startsWith('<!DOCTYPE html>'), 'no doctype: the frame would render in quirks mode')
   assert.match(doc, /<link rel="stylesheet" href="\.\.\/\.\.\/dist\/lib\.css">/)
-  assert.match(doc, /<script src="\.\.\/\.\.\/js\/lib\.js"><\/script>/)
+  assert.match(doc, /<script src="\.\.\/\.\.\/js\/lib\.js" defer><\/script>/)
   // The stylesheet has to be in place before a script from `js` measures anything.
   assert.ok(doc.indexOf('stylesheet') < doc.indexOf('lib.js'), 'css must come before js')
   assert.match(doc, /<body><button class="btn">Hi<\/button><\/body>/)
+})
+
+// The failure this prevents is silent and total: a custom element bundle in head runs
+// before the body is parsed, so `define` is called first and the parser upgrades each
+// element the moment it opens its tag — with none of its light-DOM children parsed yet.
+// Every element that reads its own children on connect finds nothing and bails. The
+// sample renders, the markup is right, and not one element is alive.
+test('a script from `js` is deferred, or it upgrades elements that have no children yet', () => {
+  const doc = buildSrcdoc('<my-widget><button>Hi</button></my-widget>', { js: ['lib.js', 'plugin.js'] })
+  assert.match(doc, /<script src="lib\.js" defer><\/script>/)
+  // Deferred scripts keep their order, which a library plus its plugin depends on.
+  assert.ok(doc.indexOf('lib.js') < doc.indexOf('plugin.js'), 'defer must not reorder')
 })
 
 test('an explicit body keeps head-eligible markup out of head', () => {
@@ -218,6 +230,79 @@ test('the default build highlights through the page global', () => {
   // and the `highlighted` flag that would otherwise make the next pass a no-op.
   assert.deepEqual(seen, ['hljs language-html'])
   assert.equal(element.querySelector('code').dataset.highlighted, undefined)
+})
+
+// WCAG 2.1.2, and the one accessibility failure here that has no workaround: Tab indents
+// inside the editor, so a keyboard user who tabs into it has nothing left to press. The
+// assertion is on `defaultPrevented`, because that is exactly the difference between a
+// Tab the editor ate and a Tab the browser gets to move focus with.
+test('Escape hands Tab back, and leaving the editor takes it again', () => {
+  const element = mount('css="../../dist/lib.css"', undefined, {
+    // CodeJar edits through execCommand, which jsdom has no implementation of. The
+    // editing is not what is under test here; which handler ran is.
+    setup: (win) => { win.document.execCommand = () => true }
+  })
+  const code = element.querySelector('code')
+  const win = element.ownerDocument.defaultView
+
+  // CodeJar leaves a block that is editable and nothing else — no role, no name.
+  assert.equal(code.getAttribute('role'), 'textbox')
+  assert.equal(code.getAttribute('aria-multiline'), 'true')
+  assert.equal(code.getAttribute('aria-keyshortcuts'), 'Escape')
+  assert.match(code.getAttribute('aria-label'), /html/i)
+
+  // The advisory the criterion asks for, said once to both audiences: `aria-describedby`
+  // for a screen reader, and the same element shown by the stylesheet for everyone else.
+  // A live region as well as a description, because it changes and a description is read
+  // on arrival and never again.
+  const hint = element.querySelector('.code-preview-hint')
+  assert.ok(hint, 'no keyboard hint')
+  assert.equal(code.getAttribute('aria-describedby'), hint.id)
+  assert.equal(hint.getAttribute('role'), 'status')
+
+  const press = (key) => {
+    const event = new win.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+    code.dispatchEvent(event)
+    return event.defaultPrevented
+  }
+
+  assert.equal(press('Tab'), true, 'Tab stopped indenting')
+  press('Escape')
+  assert.equal(press('Tab'), false, 'Escape did not hand Tab back: the editor is a keyboard trap')
+  assert.match(hint.textContent, /Tab now leaves/, 'Escape gave no sign it had done anything')
+
+  // Blur re-arms it, so coming back finds an editor that indents again.
+  code.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }))
+  assert.equal(press('Tab'), true, 'indenting never came back')
+  assert.match(hint.textContent, /Press Esc/)
+})
+
+// The other half of demonstrating an accessible component: it has to survive being used.
+// CodeJar reports an update on every keyup, not only the ones that changed the text — the
+// Escape this element now asks people to press is one of them — and rendering that would
+// reload the frame's document under a keyboard user who has since tabbed into the preview
+// and focused a control in there.
+test('a keystroke that changed nothing does not reload the frame', async() => {
+  // `reload` because the rebuild is the case that costs the most and the only one jsdom
+  // can be asked about: it renders no srcdoc, so the patch path writes into a document
+  // that never held the sample.
+  const element = mount('css="../../dist/lib.css" reload', undefined, {
+    setup: (win) => { win.document.execCommand = () => true }
+  })
+  const win = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
+  assert.ok(element.querySelector('code').hasAttribute('contenteditable'), 'the editor never attached')
+
+  // Writing srcdoc with the identical string still counts, so the assertion cannot be on
+  // its value: the reload is the attribute being written at all.
+  let writes = 0
+  new win.MutationObserver((records) => { writes += records.length })
+    .observe(frame, { attributes: true, attributeFilter: ['srcdoc'] })
+
+  element.querySelector('code').dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
+  await new Promise((resolve) => setTimeout(resolve, 800))
+
+  assert.equal(writes, 0, 'an unchanged sample rebuilt the frame')
 })
 
 test('no width switcher unless one is asked for', () => {
@@ -448,6 +533,36 @@ test('the tab attribute is the state, whoever writes it', () => {
   element.setAttribute('tab', 'code')
   assert.equal(code.getAttribute('aria-selected'), 'true')
   assert.equal(panel.hasAttribute('hidden'), true)
+})
+
+// Hiding the element focus is in drops focus on the body, and the next Tab starts again
+// from the top of the page — with the whole document between a screen reader and the
+// widget it was just in. A click or an arrow key has already moved focus to the tab by
+// the time the pane is swapped; this is the path that has not, a script or an author's
+// markup writing `tab` while the reader is inside the editor.
+test('switching tab takes focus out of the pane being hidden', () => {
+  const element = mountWithOptions('manifest="m.json"')
+  const [codeTab, optionsTab] = element.querySelectorAll('[role="tab"]')
+  const doc = element.ownerDocument
+  const editor = element.querySelector('code')
+
+  editor.focus()
+  assert.equal(doc.activeElement, editor, 'jsdom would not focus the editor: the test proves nothing')
+
+  element.setAttribute('tab', 'options')
+  assert.equal(doc.activeElement, optionsTab, 'focus was left in the hidden code pane')
+
+  // Same in the other direction, from a control inside the panel.
+  const knob = element.querySelector('.code-preview-options [tabindex], .code-preview-options')
+  knob.focus()
+  element.setAttribute('tab', 'code')
+  assert.equal(doc.activeElement, codeTab, 'focus was left in the hidden options panel')
+
+  // And nothing is stolen when focus was never in there — the frame's own load calls this
+  // too, and a reader reading the page is not to be yanked into a tab strip.
+  editor.focus()
+  element.setAttribute('tab', 'code')
+  assert.equal(doc.activeElement, editor)
 })
 
 // The pane nobody is looking at is hidden `until-found`, not plainly: the sample is the

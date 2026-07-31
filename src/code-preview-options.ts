@@ -419,6 +419,20 @@ export function buildOptions(host: CodePreview): void {
       // Roving tabindex: one tab stop for the whole list, arrows move within it.
       tab.tabIndex = selected ? 0 : -1
     }
+    // Focus cannot be left in the pane about to be hidden. Hiding the element focus is in
+    // drops it on the body, and a keyboard user's next Tab starts again from the top of
+    // the page — for a screen reader that is the whole document between them and the
+    // widget they were just in. The tab they switched *to* is where it goes, which is
+    // where a click would have left it anyway, so the two paths agree.
+    //
+    // Only when focus really was in there: clicking a tab and arrowing to one have both
+    // already focused the button by the time this runs, and find-in-page reveals a pane
+    // with focus still on the body. This is for the third caller, a script or an author's
+    // markup writing `tab` while the reader is in the editor.
+    const leaving = options ? codePanel : panel
+    if (leaving.contains(document.activeElement)) {
+      tabs.find((tab) => (tab.dataset.tab === 'options') === options)?.focus()
+    }
     showPane(panel, options)
     showPane(codePanel, !options)
     if (options) refresh()

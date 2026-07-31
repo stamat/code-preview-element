@@ -9,6 +9,11 @@
 
 code-preview {
   display: block;
+  /* The keyboard hint is positioned against this box. Relative rather than a wrapper of
+     its own, because a copy-button script that positions a button inside the code block
+     makes that block relative itself, so this cannot become the ancestor it resolves
+     against. */
+  position: relative;
   margin: 1.75rem 0;
 }
 
@@ -211,15 +216,70 @@ code-preview > .code-wrap > pre {
 }
 
 /* CodeJar sets `outline: none` inline on the block it takes over, so the focus ring
-   cannot live on the block itself. */
-code-preview.is-editable > :is(pre, .code-wrap) > pre,
+   cannot live on the block itself.
+
+   The bottom padding is the room the keyboard hint sits in. Reserved on every editable
+   block rather than added when the hint appears: the hint appears on focus, and growing
+   the block at the moment someone clicks into it shifts the whole page down under their
+   cursor. Held once, from upgrade, so focusing costs nothing.
+
+   `--code-preview-hint-space` is the hint's own height (0.75rem at 1.5, plus its padding
+   and border) and the gap below it, rounded up. Set it to whatever the host's `pre`
+   padding already is if that is roomy enough, or to the block's normal padding to turn
+   the reservation off. */
+code-preview.is-editable > .code-wrap > pre,
 code-preview.is-editable > pre {
   cursor: text;
+  padding-block-end: var(--code-preview-hint-space, 2.25rem);
 }
 
-code-preview:focus-within > :is(pre, .code-wrap) > pre,
-code-preview:focus-within > pre {
+/* `:focus-within` on the block, not on the element: a focus ring has to say which thing
+   has focus, and hung off the host it lights the code block up for a width button, a tab
+   or anything inside the preview frame. */
+code-preview > .code-wrap > pre:focus-within,
+code-preview > pre:focus-within {
   box-shadow: 0 0 0 2px var(--accent, #0969da);
+}
+
+/* The way out of the editor, said out loud. Tab indents in there, so it is not also the
+   way out — Esc hands it back (WCAG 2.1.2), and a keyboard user has to be told that.
+
+   `aria-describedby` covers a screen reader; this covers everyone else, and it is the
+   same element so the two cannot come to say different things. Absolute, and hidden by
+   visibility rather than `display: none`, because it must not move a line of the sample
+   when it appears and it must still be readable as a description while hidden. */
+code-preview .code-preview-hint {
+  position: absolute;
+  inset-block-end: 0.375rem;
+  inset-inline-end: 0.5rem;
+  visibility: hidden;
+  margin: 0;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: calc(var(--radius, 6px) / 2);
+  background: var(--bg, #fff);
+  color: var(--fg-muted, #656d76);
+  font: 0.75rem/1.5 var(--font-mono, ui-monospace, monospace);
+  pointer-events: none;
+}
+
+code-preview:has(pre:focus-within) > .code-preview-hint {
+  visibility: visible;
+}
+
+/* The hint belongs to the code block, but it cannot live inside it — a copy-button script
+   that reads the block's `innerText` would put this sentence on the clipboard. So it is a
+   child of the element, which means the tabs have to hide it themselves.
+
+   `display: none` and not the `visibility` above: that one is about a hint nobody needs
+   yet, this one is about a hint that is describing something not on screen. It is a live
+   region, so left in it announces the editor's Tab state on a tab that has no editor, and
+   an `aria-describedby` pointing into a pane the reader has switched away from.
+
+   `[tab]:not([tab="code"])` rather than naming the options panel: an absent attribute is
+   the code tab, and a third pane added later is one this rule already knows about. */
+code-preview.is-tabbed[tab]:not([tab="code"]) > .code-preview-hint {
+  display: none;
 }
 
 /* The options panel — the other tabpanel, in the same box the code block sits in, so
