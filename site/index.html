@@ -71,4 +71,22 @@ description: Live, editable HTML samples in an isolated iframe — the element d
   <pre><code class="language-html">&lt;p&gt;You cannot type in this one.&lt;/p&gt;</code></pre>
 </code-preview>
 
+<h2>An options panel</h2>
+<p><code>manifest</code> points at a
+  <a href="https://github.com/webcomponents/custom-elements-manifest">custom-elements.json</a>,
+  and its presence is what turns the second tab on. The controls are generated from it: the
+  attributes come from <code>attributes[]</code>, the custom properties from
+  <code>cssProperties[]</code>, and each one's control from the type or syntax the manifest
+  already declares. No manifest, no tabs — every page above renders exactly as it did.</p>
+<p>The two halves write to two different places, and both are honest. An <strong>attribute</strong>
+  belongs to an element in the sample, so its knob rewrites the code above and the code tab
+  keeps telling the truth — edit it back by hand and the panel re-reads it. A <strong>custom
+  property</strong> is not part of the sample at all: it goes into a stylesheet inside the
+  frame, exactly where you would put it, and the rule is printed at the bottom of the panel
+  for you to copy. Turn nothing, and nothing is written.</p>
+<code-preview css="sample.css" theme-attribute="data-theme" manifest="sample-manifest.json" tab="options">
+  <pre><code class="language-html">&lt;p&gt;Shipping status: &lt;demo-badge label="New" count="3"&gt;&lt;/demo-badge&gt;&lt;/p&gt;</code></pre>
+</code-preview>
+
 <script src="code-preview-hljs.min.js"></script>
+<script src="code-preview-options.min.js"></script>

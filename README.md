@@ -78,6 +78,9 @@ Reach for something else when the shape of the problem is different:
 | `theme-attribute` | attribute the host page's `[data-theme]` is mirrored onto, inside the frame |
 | `viewport-width`  | render at this css width and scale it down to fit                           |
 | `viewport-widths` | whitespace-separated widths to offer as buttons                             |
+| `manifest`        | url of a `custom-elements.json` — its presence turns the options panel on   |
+| `manifest-tag`    | which declaration in it to drive. Default: the first declared tag the sample uses |
+| `tab`             | `code` (default) or `options` — which pane is open, and the live state      |
 | `no-edit`         | render the preview, leave the code read-only                                |
 | `no-shrink`       | never size the preview below its tallest measurement                        |
 | `reload`          | always rebuild the frame on edit, never patch it                            |
@@ -208,14 +211,110 @@ position; a reload is forced by `js` assets, the `reload` attribute, an inline
 same trap from different ends: `innerHTML` never executes scripts it inserts, and a
 script that already ran does not re-run against markup replacing what it initialised.
 
-## Two builds
+## The options panel
 
-Same element, and the only difference is whether highlight.js rides along:
+A second tab beside the code, with controls generated from a
+[Custom Elements Manifest](https://github.com/webcomponents/custom-elements-manifest). It is
+opt-in — one more script tag, and nothing in either element bundle:
 
-| Bundle                          |      |                                                                      |
-| ------------------------------- | ---- | -------------------------------------------------------------------- |
-| `dist/code-preview.min.js`      | 11KB | the default. No highlighter; uses `window.hljs` if the page has one. |
-| `dist/code-preview-hljs.min.js` | 53KB | highlight.js bundled in, for a page with none.                       |
+```html
+<script src="node_modules/code-preview-element/dist/code-preview-hljs.min.js"></script>
+<script src="node_modules/code-preview-element/dist/code-preview-options.min.js"></script>
+
+<code-preview
+  css="dist/switch.css dist/switch-theme.css"
+  js="dist/switch.js"
+  manifest="dist/custom-elements.json"
+  tab="options"
+>
+  <pre><code class="language-html">&lt;switch-elemental&gt;…&lt;/switch-elemental&gt;</code></pre>
+</code-preview>
+```
+
+`custom-elements.json` is not a format invented here — it is the one the ecosystem already
+has, generated from your JSDoc by
+[`@custom-elements-manifest/analyzer`](https://custom-elements-manifest.open-wc.org/analyzer/getting-started/),
+and it already carries everything a panel needs. `cssProperties[].syntax` is the
+[Houdini syntax string](https://developer.mozilla.org/en-US/docs/Web/CSS/@property/syntax)
+(`<color>`, `<time>`, `ease | linear`), which is exactly a control type — so the CSS side is
+already typed and nobody has to agree with us about how. Shipping one also buys editor
+autocomplete and a Storybook args table, which a format of ours would not.
+
+**No manifest, no tabs.** Every page that does not use one renders byte-identically.
+
+### Where a knob writes
+
+The element's premise is that the code block's text is the single source of truth. A knob
+that quietly mutated the live DOM inside the frame would break it — the code tab would then
+describe something that is not what is rendered. So the two kinds of knob get two different
+answers:
+
+| Manifest field   | Control from                          | Writes to                                     |
+| ---------------- | ------------------------------------- | --------------------------------------------- |
+| `attributes[]`   | `type.text` — boolean, number, union  | **the sample source**, spliced into its opening tag |
+| `cssProperties[]`| `syntax` — `<color>`, `<time>`, union | **a stylesheet in the frame**, plus a rule to copy   |
+
+An attribute belongs to an element in the sample, so its knob rewrites the code above and
+the code tab keeps telling the truth. The splice is a regex over the opening tag rather
+than a parse-and-serialize: on a documentation page the markup *is* the documentation, and
+reformatting it on the first knob turn is not acceptable. Edit an attribute back by hand
+and the controls re-read it the next time the Options tab is opened.
+
+A custom property is not part of the sample — a consumer setting one does it in their own
+stylesheet, so the panel does the same: one `<style>` appended last in the frame's head,
+holding one rule whose selector is the element's own tag. Never `:root`; a property set on
+an element beats one inherited from an ancestor, so a themed element would ignore it. That
+rule is printed at the bottom of the panel to be copied, which is worth more than the knobs
+are.
+
+**An untouched knob writes nothing.** No attribute, no declaration. The manifest's default
+is a placeholder, not a value, so emptying a control is how you reset it.
+
+### Controls
+
+| Manifest says                                    | Control                                       |
+| ------------------------------------------------ | --------------------------------------------- |
+| attribute, `boolean`                              | checkbox — on writes it bare, off removes it |
+| attribute, `'a' \| 'b'`                           | `<select>`, plus an empty option meaning unset |
+| attribute, `number`                               | `<input type="number">`                       |
+| cssProperty, `<color>`                            | text field **plus** a swatch beside it        |
+| cssProperty, `a \| b \| c`                        | `<select>`                                    |
+| anything else, or nothing                         | `<input type="text">`                         |
+
+`<input type="color">` is deliberately never the colour control on its own. `currentcolor`,
+`Canvas`, `transparent` and `color-mix(in srgb, currentcolor 22%, transparent)` are all real
+defaults in a themeable library, a native colour input can hold none of them, and swapping
+one out for a hex value is how a knob silently destroys a theme that was correct. The text
+field is the control; the picker sits beside it and writes into it.
+
+A property the manifest documents without a `default` falls back to what the frame computes
+for it, so an undocumented default still shows something true.
+
+Anything the manifest cannot express goes in one namespaced key that every other tool
+ignores — the CEM schema sets no `additionalProperties: false`:
+
+```jsonc
+{
+  "name": "--switch-elemental-duration",
+  "syntax": "<time>",
+  "default": "250ms",
+  "x-code-preview": { "control": "range", "min": 0, "max": 1000, "step": 25 }
+}
+```
+
+`control` overrides the table above, `hidden` drops the entry entirely — though the better
+place to leave a knob out is the manifest itself, by not documenting a property that is
+`calc()`-derived from the others.
+
+## Three builds
+
+Same element in the first two, and the only difference is whether highlight.js rides along:
+
+| Bundle                             |      |                                                                      |
+| ---------------------------------- | ---- | -------------------------------------------------------------------- |
+| `dist/code-preview.min.js`         | 11KB | the default. No highlighter; uses `window.hljs` if the page has one. |
+| `dist/code-preview-hljs.min.js`    | 53KB | highlight.js bundled in, for a page with none.                       |
+| `dist/code-preview-options.min.js` | 7KB  | the options panel, on top of either. Carries no copy of the element. |
 
 The default reads the global per call rather than once at startup, so the order of the
 two script tags does not matter:
@@ -297,8 +396,15 @@ upgraded and before the frame has loaded, from one variable:
 code-preview { --code-preview-height: 8rem; }        /* the default */
 ```
 
-`--code-preview-bar-height` (default `2.25rem`) is the same for the `viewport-widths`
-bar, which is reserved alongside it.
+`--code-preview-bar-height` (default `2.25rem`) is the same for the bar above the
+preview, reserved alongside it whenever `viewport-widths` or `manifest` will put one
+there.
+
+`--code-preview-options-height` (default `12rem`) is the third, and only matters with
+`tab="options"` — that is the one case where upgrading *hides* something, since the code
+block is visible until the panel exists to replace it. The stylesheet hides it from the
+start and holds room for the panel instead. It is a floor rather than a height, so it also
+covers the gap between the element upgrading and the manifest arriving.
 
 The default is a guess centred on real samples rather than a round number — it
 measured lowest across the demo page. Set it per element wherever the height is

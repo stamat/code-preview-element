@@ -32,6 +32,42 @@ body {
 .card h3 { margin: 0 0 0.5rem; }
 .card p { margin: 0; }
 
+/* The stand-in for a documented custom element, for the options panel to drive. There is
+   no JavaScript behind it and there does not need to be: an unknown tag is an inline box
+   the page can style, `content: attr(…)` renders its text attributes, and the theme it is
+   themed with is custom properties set on the element itself — which is exactly the shape
+   the panel writes to, and the reason its rule uses the tag as its selector rather than
+   `:root`, where an inherited value would lose to the one set here. */
+demo-badge {
+  --demo-badge-bg: color-mix(in srgb, currentcolor 12%, transparent);
+  --demo-badge-fg: currentcolor;
+  --demo-badge-radius: 6px;
+  --demo-badge-padding: 0.15em 0.6em;
+  --demo-badge-weight: 600;
+  --demo-badge-size: 0.8125rem;
+
+  display: inline-block;
+  padding: var(--demo-badge-padding);
+  border-radius: var(--demo-badge-radius);
+  background: var(--demo-badge-bg);
+  color: var(--demo-badge-fg);
+  font-size: var(--demo-badge-size);
+  font-weight: var(--demo-badge-weight);
+}
+
+demo-badge::before { content: attr(label); }
+
+/* Only when there is one, so an empty count does not leave a stray separator. */
+demo-badge[count]::after { content: " " attr(count); opacity: 0.7; }
+
+/* The attribute knobs, deliberately kept off every property the custom-property knobs
+   own. An attribute selector outranks the panel's own tag-only rule, so a `[rounded]`
+   here setting the radius would leave the radius knob looking broken — and a demo where
+   turning one knob silently disables another is a demo of the wrong thing. */
+demo-badge[uppercase] { text-transform: uppercase; letter-spacing: 0.06em; }
+demo-badge[tone="quiet"] { opacity: 0.55; }
+demo-badge[tone="loud"] { box-shadow: 0 0 0 2px currentcolor; }
+
 /* Breakpoints, so `viewport-width` has something to prove: these only fire when the
    frame's own viewport is wide, which is exactly what a text column denies it. */
 .cols {

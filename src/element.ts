@@ -43,6 +43,12 @@
 //   viewport-widths  whitespace-separated widths to offer as buttons, which set
 //                    `viewport-width` — the attribute stays the single source of
 //                    truth, so external code can drive it just as well
+//   manifest         url of a custom-elements.json; its presence is what turns the
+//                    options panel on, and only the opt-in bundle can answer it
+//   manifest-tag     which declaration in it to drive, when the sample has more than
+//                    one documented element in it
+//   tab              `code` (default) or `options` — which panel is open, held the
+//                    same way `viewport-width` is: the attribute is the state
 //   no-edit          render the preview, leave the code read-only
 //   no-shrink        let the preview grow to its tallest measurement and stay there,
 //                    for a sample that would otherwise measure short and shift the
@@ -126,16 +132,30 @@ export function buildSrcdoc(
 }
 
 export class CodePreview extends HTMLElement {
-  // The width buttons write `viewport-width`, and this is what makes that enough:
-  // the attribute is the state, so a click, a script and a hand-written attribute
-  // all take the same path.
-  static observedAttributes = ['viewport-width']
+  // The width buttons write `viewport-width` and the tabs write `tab`, and this is
+  // what makes that enough: the attribute is the state, so a click, a script and a
+  // hand-written attribute all take the same path.
+  static observedAttributes = ['viewport-width', 'tab']
 
   // Set by the entry file, before it registers the element — an element already in
   // the markup upgrades the moment `define` is called, and its first paint needs
   // this. Left unset the block is still editable and the preview still updates; the
   // code just stops recolouring.
   static highlighter?: Highlighter
+
+  // Set by the options bundle, exactly as `highlighter` is set by the entry files, and
+  // asked for only when a `manifest` attribute says there is something to build a panel
+  // out of. Left unset — the default build, every page that does not import it — the
+  // attribute is inert and the element renders byte-identically to before.
+  static options?: (host: CodePreview) => void
+
+  // "Re-read whatever you are showing." Called when `tab` changes and again whenever the
+  // frame finishes loading — the panel reads both the sample's attributes and the frame's
+  // computed values, and a document that has just arrived is new information about the
+  // second. A plain field rather than an event or an observer because the element knows
+  // nothing about which tabs exist and the panel knows nothing about attribute callbacks;
+  // this is the whole contract between them, and with no options bundle nobody is called.
+  onPanelSync?: () => void
 
   private frame?: HTMLIFrameElement
   private viewport?: HTMLElement
@@ -158,6 +178,10 @@ export class CodePreview extends HTMLElement {
   // grows is the wrong trade for a sample whose height genuinely varies. Reset
   // wherever the size is *meant* to change: a new source, a new emulated width.
   private peak = 0
+  // The declarations the options panel has turned on, as one css rule's worth of text.
+  // Kept here rather than in the panel because a rebuilt frame is a new document with a
+  // new head, and re-applying it is `onFrameLoad`'s job.
+  private optionsCss = ''
   connectedCallback(): void {
     // Moving the element in the dom re-runs this; build once, or the move costs a
     // second viewport and a second width bar stacked on the first. Only the theme
@@ -232,25 +256,50 @@ export class CodePreview extends HTMLElement {
     // reshuffling on load. Last, and after the preview is already wired, so a
     // highlighting problem costs colour and not the demo.
     if (!code.querySelector('span')) this.highlight(code)
+
+    // Last of all, and only when the markup says there is a manifest to read: the panel
+    // is a second bundle's job, and everything it needs — the code block, the bar, the
+    // editor — has to exist before it is asked for.
+    if (this.hasAttribute('manifest')) CodePreview.options?.(this)
   }
 
   attributeChangedCallback(name: string, before: string | null, after: string | null): void {
+    if (before === after) return
+    // Nobody to tell until the options bundle has built a panel — which reads the
+    // attribute itself when it does, so an initial `tab="options"` is not missed.
+    if (name === 'tab') {
+      this.onPanelSync?.()
+      return
+    }
     // Fires before connectedCallback for attributes present in the markup; there is
     // nothing to resize yet, and connectedCallback does the first fit anyway.
-    if (name !== 'viewport-width' || before === after || !this.frame) return
+    if (name !== 'viewport-width' || !this.frame) return
     this.syncBar()
     this.peak = 0
     this.fit()
+  }
+
+  // The strip above the preview, made on demand and shared. Whatever ends up in it —
+  // the width buttons below, the options panel's tab list, or both — it stays one box,
+  // so there is one border, one set of top corners and one reservation to hold room for.
+  get toolbar(): HTMLElement {
+    if (!this.bar) {
+      const bar = document.createElement('div')
+      bar.className = 'code-preview-bar'
+      this.prepend(bar)
+      this.bar = bar
+    }
+    return this.bar
   }
 
   // A row of widths to render at. `role="group"` with a label rather than a
   // toolbar/tablist: these are plain buttons, and the richer roles oblige arrow-key
   // navigation that plain buttons do not need to be usable.
   private buildBar(widths: number[]): void {
-    const bar = document.createElement('div')
-    bar.className = 'code-preview-bar'
-    bar.setAttribute('role', 'group')
-    bar.setAttribute('aria-label', 'Preview width')
+    const group = document.createElement('div')
+    group.className = 'code-preview-widths'
+    group.setAttribute('role', 'group')
+    group.setAttribute('aria-label', 'Preview width')
 
     const button = (label: string, width: string): HTMLButtonElement => {
       const element = document.createElement('button')
@@ -266,10 +315,9 @@ export class CodePreview extends HTMLElement {
       return element
     }
 
-    bar.appendChild(button('Fit', ''))
-    for (const width of widths) bar.appendChild(button(`${width}px`, String(width)))
-    this.prepend(bar)
-    this.bar = bar
+    group.appendChild(button('Fit', ''))
+    for (const width of widths) group.appendChild(button(`${width}px`, String(width)))
+    this.toolbar.appendChild(group)
     this.syncBar()
   }
 
@@ -305,6 +353,68 @@ export class CodePreview extends HTMLElement {
 
   get source(): string {
     return this.code?.textContent ?? ''
+  }
+
+  // Replace the sample, from outside the editor. The options panel's attribute knobs
+  // are the only caller: an attribute belongs to an element in the sample, so the code
+  // block has to keep telling the truth about it, and everything downstream of this is
+  // the path a keystroke already takes.
+  //
+  // CodeJar's `updateCode` writes the text, re-highlights and then calls `onUpdate`
+  // itself — which is the same `schedule` the editor is wired to — so the write, the
+  // colour and the preview all follow from the one call. Without a jar (`no-edit`)
+  // there is nothing listening, so all three are done by hand.
+  set source(src: string) {
+    const code = this.code
+    if (!code || src === this.source) return
+    if (this.jar) {
+      this.jar.updateCode(src)
+    } else {
+      code.textContent = src
+      this.highlight(code)
+      this.schedule(src)
+    }
+  }
+
+  // The box a tab hides: the `<pre>`, or the `.code-wrap` a copy-button script wrapped
+  // it in. Walked up from the block rather than queried, because what sits between the
+  // two is the host page's business and there is no list of wrappers to keep.
+  get codePanel(): HTMLElement | undefined {
+    let node = this.code
+    while (node && node.parentElement !== this) node = node.parentElement ?? undefined
+    return node
+  }
+
+  // The frame's document, once it holds one of ours. The options panel reads computed
+  // values through it, for a custom property the manifest documents without a default.
+  get frameDocument(): Document | undefined {
+    return this.loaded ? (this.frame?.contentDocument ?? undefined) : undefined
+  }
+
+  // One stylesheet, appended last in the frame's head, holding whatever the options
+  // panel's knobs have been turned to. Last because the `<link>`s from `css=` are
+  // already there and equal specificity is settled by order; a separate sheet rather
+  // than inline styles on the sample because that is what a consumer setting these
+  // properties would actually write, and the panel offers the rule to be copied.
+  //
+  // Re-applied on every load, since a rebuilt frame is a new document. A patched frame
+  // keeps it for free — patching only ever touches body.
+  setFrameStyle(css: string): void {
+    this.optionsCss = css
+    this.applyFrameStyle()
+  }
+
+  private applyFrameStyle(): void {
+    const doc = this.frameDocument
+    if (!doc) return
+    let style = doc.getElementById('code-preview-options') as HTMLStyleElement | null
+    if (!style) {
+      if (!this.optionsCss) return
+      style = doc.createElement('style')
+      style.id = 'code-preview-options'
+      doc.head.appendChild(style)
+    }
+    style.textContent = this.optionsCss
   }
 
   private get assets(): { css: string[], js: string[], head: string | null } {
@@ -352,6 +462,7 @@ export class CodePreview extends HTMLElement {
     if (!doc) return
     this.loaded = true
     this.syncTheme()
+    this.applyFrameStyle()
     // An iframe has no intrinsic height, so the parent measures the frame's own
     // document and sizes it. Reconnected on every load: a rebuild means a new
     // documentElement to watch. The wrapper is watched too — its width is what an
@@ -369,6 +480,10 @@ export class CodePreview extends HTMLElement {
       this.dataset.error = (event as ErrorEvent).message || 'Script error'
     })
     this.fit()
+    // A loaded document is the first moment anything can be computed out of it, which is
+    // where the options panel gets the default for a property the manifest documents
+    // without one.
+    this.onPanelSync?.()
   }
 
   // Width now, height on the next frame. The two cannot happen together: changing the

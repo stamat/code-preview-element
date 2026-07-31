@@ -15,6 +15,10 @@
       "types": "./dist/code-preview-hljs.d.ts",
       "default": "./dist/code-preview-hljs.js"
     },
+    "./options": {
+      "types": "./dist/code-preview-options.d.ts",
+      "default": "./dist/code-preview-options.js"
+    },
     "./style": "./dist/code-preview.css",
     "./theme": "./dist/code-preview-hljs.css",
     "./dist/*": "./dist/*",

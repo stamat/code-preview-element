@@ -15,6 +15,52 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+### Added
+
+- **An options panel**, as a third bundle you opt into —
+  `dist/code-preview-options.min.js`, 7KB, carrying no copy of the element. A `manifest`
+  attribute pointing at a
+  [`custom-elements.json`](https://github.com/webcomponents/custom-elements-manifest) turns on
+  a second tab beside the code, with controls generated from it: `attributes[]` become
+  attribute knobs, `cssProperties[]` become custom-property knobs, and each control's kind
+  comes from the type or Houdini syntax the manifest already declares.
+
+  ```html
+  <script src="dist/code-preview-options.min.js"></script>
+
+  <code-preview manifest="dist/custom-elements.json" tab="options"> … </code-preview>
+  ```
+
+  The two halves of the panel write to two different places, which is the one real design
+  decision in it. An **attribute** belongs to an element in the sample, so its knob rewrites
+  the code block — spliced into the opening tag with a regex rather than parsed and
+  re-serialized, because on a documentation page the markup *is* the documentation and
+  reformatting it on the first knob turn is not acceptable. Edit it back by hand and the
+  controls re-read the source next time the tab is opened. A **custom property** is not part
+  of the sample at all: it goes into one `<style>` appended last in the frame's head, whose
+  selector is the element's own tag and never `:root` — and that rule is printed at the
+  bottom of the panel to be copied, which is worth more than the knobs are.
+
+  An untouched knob writes nothing at all. Defaults are placeholders, not values, so
+  emptying a control is how you reset it.
+
+  **No manifest, no tabs** — a page that does not use one renders byte-identically to before,
+  and a page that never loads the bundle pays nothing for the attribute existing.
+
+### Changed
+
+- **The DOM of the bar** above the preview. `viewport-widths` used to put `role="group"` on
+  `.code-preview-bar` itself; the buttons now sit in a `.code-preview-widths` group inside it,
+  and the bar is a plain strip that the options panel's tab list shares. One bar means one
+  border, one set of top corners and one height to reserve however many things end up in it.
+  Only affects CSS or scripts that targeted `.code-preview-bar[role="group"]` directly.
+- `code-preview:not(:defined)[viewport-widths]::before` is now
+  `code-preview:not(:defined):is([viewport-widths], [manifest])::before`, since `manifest`
+  puts a bar there too. `--code-preview-options-height` (default `12rem`) joins
+  `--code-preview-height` and `--code-preview-bar-height`, and matters only with
+  `tab="options"` — the one case where upgrading hides something, so the code block is hidden
+  from the start and the panel's space held instead.
+
 ## [0.1.0]
 
 Initial release.

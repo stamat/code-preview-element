@@ -23,6 +23,18 @@
         "format": "iife",
         "target": "es2019"
       }
+    },
+    {
+      "//": "The options panel, opt-in and on top of either bundle above. It reaches the element through the custom element registry rather than through an import, so this bundle carries none of element.ts — a page loads one element bundle and this, and pays for the element once.",
+      "in": "src/code-preview-options.ts",
+      "out": "dist/code-preview-options.js",
+      "options": {
+        "sourcemap": true,
+        "minify": true,
+        "justMinified": false,
+        "format": "iife",
+        "target": "es2019"
+      }
     }
   ],
   "exec": {
@@ -47,8 +59,10 @@
       "//": "The site loads no highlighter of its own, so it takes the bundle that brings one. No code-preview-hljs.css either — the docs theme colours the tokens, which is the case the separate stylesheet exists to allow.",
       "in": [
         "dist/code-preview-hljs.min.js",
+        "dist/code-preview-options.min.js",
         "dist/code-preview.min.css",
-        "site/sample.css"
+        "site/sample.css",
+        "site/sample-manifest.json"
       ],
       "out": "_site"
     },

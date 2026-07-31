@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1.0.0",
+  "readme": "The manifest behind the options demo. Hand-written, because this repo documents an element that *reads* custom-elements.json and does not produce one — a real library generates this from JSDoc with @custom-elements-manifest/analyzer and ships it as its `customElements` key.\n\nEverything the panel uses is here and nothing else: attributes with a type and a default, cssProperties with a syntax and a default. `--demo-badge-size` deliberately has no default, so the panel falls back to what the frame computes for it.",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "sample.css",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "DemoBadge",
+          "tagName": "demo-badge",
+          "description": "A label with a count. Styled by sample.css and backed by no JavaScript at all — an unknown tag is still an element the page can style.",
+          "attributes": [
+            { "name": "label", "type": { "text": "string" }, "default": "Badge", "description": "The text it shows." },
+            { "name": "count", "type": { "text": "number" }, "description": "A number after the label. Omitted entirely when unset." },
+            { "name": "tone", "type": { "text": "'quiet' | 'loud'" }, "description": "Quieter than the text around it, or ringed to stand out." },
+            { "name": "uppercase", "type": { "text": "boolean" }, "default": "false", "description": "Set the label in capitals." }
+          ],
+          "cssProperties": [
+            { "name": "--demo-badge-bg", "syntax": "<color>", "default": "color-mix(in srgb, currentcolor 12%, transparent)", "description": "The pill's fill. A color-mix by default, which is why the control is a text field and not a colour input." },
+            { "name": "--demo-badge-fg", "syntax": "<color>", "default": "currentcolor", "description": "The text colour. `currentcolor` inherits whatever the page is set in." },
+            { "name": "--demo-badge-radius", "syntax": "<length>", "default": "6px", "description": "Corner radius. `999px` is a pill." },
+            { "name": "--demo-badge-padding", "syntax": "<length>+", "default": "0.15em 0.6em", "description": "Padding inside the pill, in the shorthand's own order." },
+            { "name": "--demo-badge-weight", "syntax": "normal | 500 | 600 | 700", "default": "600", "description": "Font weight of the label." },
+            { "name": "--demo-badge-size", "syntax": "<length>", "description": "Font size. Documented without a default on purpose — the panel reads the frame's computed value instead." }
+          ],
+          "events": [],
+          "slots": []
+        }
+      ]
+    }
+  ]
+}
