@@ -99,5 +99,6 @@
     "port": 4040
   },
   "livereload": true,
-  "watch": ["src", "site"]
+  "//watch": "dist is watched too: the copy sources above are build outputs, and without an event on them the copy into _site never re-runs — src edits would rebuild dist and reload a page still serving the previous bundle.",
+  "watch": ["src", "site", "dist"]
 }
