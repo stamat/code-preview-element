@@ -41,6 +41,9 @@ let readAttributes
 let controlFor
 let cssRule
 let pickDeclaration
+let swatchFor
+let describeDetail
+let detailTokens
 // The three bundles: the default, which expects the page to have brought a highlighter,
 // the one with highlight.js inside it, and the opt-in options panel that goes on top of
 // either. Most of what follows is about the element rather than any build, and runs
@@ -59,7 +62,7 @@ before(async() => {
   const esm = await bundle(src('code-preview'), 'esm')
   ;({ buildSrcdoc, scaleToFit } = await import(`data:text/javascript;base64,${Buffer.from(esm).toString('base64')}`))
   const panel = await bundle(src('code-preview-options'), 'esm')
-  ;({ setAttributeInSource, readAttributes, controlFor, cssRule, pickDeclaration } =
+  ;({ setAttributeInSource, readAttributes, controlFor, cssRule, pickDeclaration, swatchFor, describeDetail, detailTokens } =
     await import(`data:text/javascript;base64,${Buffer.from(panel).toString('base64')}`))
   delete globalThis.document
   plain = await bundle(src('code-preview'), 'iife')
@@ -305,6 +308,47 @@ test('a keystroke that changed nothing does not reload the frame', async() => {
   assert.equal(writes, 0, 'an unchanged sample rebuilt the frame')
 })
 
+// The third case that has to reload, and the one that fails most quietly. A js demo has
+// its script inside the sample, because there is only ever one fence — and `innerHTML`
+// never executes a script it inserts. The first paint goes through srcdoc and works, so
+// the demo is only dead from the first keystroke on, with nothing in the console.
+//
+// Asserting the path rather than its result, which is all jsdom can honestly be asked:
+// it fires the frame's load without ever rendering the srcdoc, so a patch lands in a
+// document that never held the sample. The control case is what proves the patch path
+// was armed at all — without it, "rebuilt" would pass for the wrong reason.
+test('a sample carrying its own script reloads the frame instead of patching it', async() => {
+  const block = (sample) => `<pre><code class="language-html">${sample}</code></pre>`
+
+  const rebuilds = async(sample, edited) => {
+    const element = mount('css="../../dist/lib.css" no-edit', block(sample))
+    const win = element.ownerDocument.defaultView
+    const frame = element.querySelector('iframe')
+    // Let the frame's load fire: `loaded` is what arms patching in the first place.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // Writing srcdoc with an identical string still counts, so the assertion cannot be
+    // on its value: the reload is the attribute being written at all.
+    let writes = 0
+    new win.MutationObserver((records) => { writes += records.length })
+      .observe(frame, { attributes: true, attributeFilter: ['srcdoc'] })
+
+    element.source = edited
+    await new Promise((resolve) => setTimeout(resolve, 800))
+    return writes
+  }
+
+  assert.equal(await rebuilds('&lt;b&gt;hi&lt;/b&gt;', '<b>bye</b>'), 0,
+    'plain markup rebuilt the frame, or the patch path was never armed and the case below proves nothing')
+  assert.equal(await rebuilds('&lt;b&gt;hi&lt;/b&gt;&lt;script&gt;go()&lt;/script&gt;', '<b>bye</b><script>go()</script>'), 1,
+    'an inline script was patched in, so it never ran again')
+  // A script arriving with the edit counts too — the sample that had none until now is
+  // exactly the one being typed.
+  assert.equal(await rebuilds('&lt;b&gt;hi&lt;/b&gt;', '<b>hi</b><script src="x.js"></script>'), 1)
+  // `<scriptish>` is not a script, and neither is prose about one.
+  assert.equal(await rebuilds('&lt;b&gt;hi&lt;/b&gt;', '<b>hi</b><p>the &lt;script&gt; tag</p>'), 0)
+})
+
 test('no width switcher unless one is asked for', () => {
   assert.equal(mount().querySelector('.code-preview-bar'), null)
 })
@@ -445,6 +489,70 @@ test('a manifest entry decides its own control', () => {
   assert.equal(ranged.kind, 'range')
   assert.deepEqual([ranged.min, ranged.max, ranged.step], [0, 1000, 25])
   assert.equal(controlFor({ name: '--inset', syntax: '<length>', 'x-code-preview': { hidden: true } }).hidden, true)
+})
+
+// The swatch fills the whole button, so what it shows has to be true. A picker holds an
+// opaque `#rrggbb`, or an `#rrggbbaa` where the engine takes the `alpha` attribute, and
+// nothing else: everything it cannot hold either becomes the crossed-out square
+// (`transparent`) or leaves the swatch where it was.
+test('the swatch only ever shows a colour a picker can actually hold', () => {
+  assert.equal(swatchFor('rgb(124, 92, 255)'), '#7c5cff')
+  assert.equal(swatchFor('rgba(0, 0, 0, 0.5)'), '#000000')
+  // The modern serialisation, and percentages in either position.
+  assert.equal(swatchFor('rgb(255 0 0 / 50%)'), '#ff0000')
+  assert.equal(swatchFor('rgb(100% 0% 0%)'), '#ff0000')
+  // A `color-mix()` in srgb comes back in this form in some engines, 0–1 per channel.
+  assert.equal(swatchFor('color(srgb 1 0 0)'), '#ff0000')
+  assert.equal(swatchFor('color(srgb 0 0 0 / 0)'), 'transparent')
+
+  // `transparent` computes to a zero alpha in every engine, and that is the one case the
+  // stylesheet draws itself rather than handing to the picker.
+  assert.equal(swatchFor('rgba(0, 0, 0, 0)'), 'transparent')
+  assert.equal(swatchFor('rgb(0 0 0 / 0%)'), 'transparent')
+
+  // A picker carrying the `alpha` attribute holds the eight-digit form, so the half
+  // transparent case above stops being drawn as an opaque one. Opaque stays six digits,
+  // and a zero alpha is still the crossed-out square rather than `#00000000`.
+  assert.equal(swatchFor('rgba(0, 0, 0, 0.5)', true), '#00000080')
+  assert.equal(swatchFor('rgb(255 0 0 / 50%)', true), '#ff000080')
+  assert.equal(swatchFor('rgb(124, 92, 255)', true), '#7c5cff')
+  assert.equal(swatchFor('rgba(0, 0, 0, 0)', true), 'transparent')
+
+  // Anything else is "leave it alone" — a wide-gamut colour, an unresolved keyword, an
+  // engine that answered with something unexpected.
+  assert.equal(swatchFor('color(display-p3 1 0 0)'), null)
+  assert.equal(swatchFor('currentcolor'), null)
+  assert.equal(swatchFor(''), null)
+})
+
+// The events readout. Not `JSON.stringify`: half of these carry an element, and it comes
+// out of the frame, so it is not this realm's `Element` either.
+test('an event detail reads as one line, whatever is in it', () => {
+  assert.equal(describeDetail({ checked: true }), '{ checked: true }')
+  assert.equal(describeDetail({ label: 'New' }), '{ label: "New" }')
+  // A node from another realm, recognised by having a `localName` rather than by `instanceof`.
+  assert.equal(describeDetail({ panel: { localName: 'demo-badge' }, open: false }),
+    '{ panel: <demo-badge>, open: false }')
+  assert.equal(describeDetail({ tabs: [1, 2, 3] }), '{ tabs: [3] }')
+  // An event with nothing on it says nothing, rather than `{}` or `undefined`.
+  assert.equal(describeDetail(undefined), '')
+  assert.equal(describeDetail({}), '')
+
+  // A payload is whatever the sample felt like passing, and one line stays one line: a
+  // paragraph is cut, a function is a glyph, anything nested is a placeholder.
+  assert.equal(describeDetail({ text: 'x'.repeat(200) }), `{ text: "${'x'.repeat(40)}… }`)
+  assert.equal(describeDetail({ done: () => {} }), '{ done: ƒ }')
+  assert.equal(describeDetail({ config: { deep: { deeper: true } } }), '{ config: {…} }')
+  // Not an object at all — a `CustomEvent` whose detail is one value.
+  assert.equal(describeDetail(42), '42')
+  assert.equal(describeDetail(false), 'false')
+
+  // The same line in pieces, which is what the readout paints. Punctuation carries no
+  // class: it is a text node between spans, not a token.
+  assert.deepEqual(detailTokens({ index: 2 }).filter((token) => token.cls),
+    [{ text: 'index', cls: 'hljs-attr' }, { text: '2', cls: 'hljs-number' }])
+  assert.deepEqual(detailTokens({ panel: { localName: 'demo-badge' } }).filter((token) => token.cls),
+    [{ text: 'panel', cls: 'hljs-attr' }, { text: '<demo-badge>', cls: 'hljs-tag' }])
 })
 
 test('an untouched panel writes no rule at all', () => {
@@ -651,6 +759,9 @@ const MANIFEST = {
         { name: '--demo-badge-bg', syntax: '<color>', default: 'currentcolor' },
         { name: '--demo-badge-radius', syntax: '<length>', default: '6px' },
         { name: '--demo-badge-weight', syntax: 'normal | 600', default: '600' }
+      ],
+      events: [
+        { name: 'demo-badge-click', type: { text: 'CustomEvent' }, description: 'Clicked.' }
       ]
     }]
   }]
@@ -673,7 +784,7 @@ async function mountFilled(attributes = 'manifest="m.json" tab="options" no-edit
 test('the controls are generated from the manifest, grouped by where they write', async() => {
   const element = await mountFilled()
   const groups = [...element.querySelectorAll('.code-preview-group legend')].map((one) => one.textContent)
-  assert.deepEqual(groups, ['Attributes', 'Custom properties'])
+  assert.deepEqual(groups, ['Attributes', 'Custom properties', 'Events'])
 
   const knobs = [...element.querySelectorAll('.code-preview-knob')]
   assert.deepEqual(knobs.map((knob) => knob.querySelector('.code-preview-knob-name').textContent),
@@ -768,6 +879,75 @@ test('the attribute knobs are re-read whenever the options tab is opened', async
 
   assert.equal(label.value, 'Edited')
   assert.equal(uppercase.checked, true)
+})
+
+// The third group, and the only read-only one: what the sample fires, listed whether or
+// not it ever has. The listeners go on the frame's *document* in the capture phase, which
+// is what hears an event that does not bubble — most of them, dispatched on the element.
+test('an event fired inside the frame is counted, whichever tab is open', async() => {
+  const element = await mountFilled('manifest="m.json" no-edit')
+  const window = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
+  const count = element.querySelector('.code-preview-event-count')
+  const detail = element.querySelector('.code-preview-event-detail')
+
+  assert.equal(element.querySelector('.code-preview-event .code-preview-knob-name').textContent, 'demo-badge-click')
+  assert.equal(count.textContent, '—', 'an event that has not fired has to say so')
+
+  // jsdom never renders a srcdoc, so the load is dispatched by hand. Everything downstream
+  // of it is real, including which document the listeners end up on.
+  frame.dispatchEvent(new window.Event('load'))
+  const doc = frame.contentDocument
+  const inner = frame.contentWindow
+  const badge = doc.createElement('demo-badge')
+  doc.body.appendChild(badge)
+
+  // Not bubbling, deliberately: capture is what makes the document hear it anyway.
+  badge.dispatchEvent(new inner.CustomEvent('demo-badge-click', { detail: { label: 'New' } }))
+  assert.equal(count.textContent, '1×')
+  assert.equal(detail.textContent, '{ label: "New" }')
+  badge.dispatchEvent(new inner.CustomEvent('demo-badge-click', { detail: { label: 'New' } }))
+  assert.equal(count.textContent, '2×')
+
+  // And the code tab was the one open the whole time: an event fired while the reader is
+  // looking at the sample still has to be counted, so the listeners cannot wait for the
+  // panel to be looked at.
+  assert.notEqual(element.getAttribute('tab'), 'options')
+
+  // And the name goes over the preview, which is where the reader is looking when they
+  // click the thing that fired it. One box however many events arrive.
+  const toast = element.querySelectorAll('.code-preview-toast')
+  assert.equal(toast.length, 1)
+  assert.equal(toast[0].textContent, 'demo-badge-click')
+  assert.equal(toast[0].parentElement.className, 'code-preview-viewport', 'the toast belongs over the sample, not over the toolbar')
+
+  // Which is exactly when the count is invisible, so the tab strip says one arrived —
+  // until the panel it landed in is opened.
+  assert.equal(element.dataset.eventFired, '')
+  element.querySelectorAll('[role="tab"]')[1].click()
+  assert.equal(element.dataset.eventFired, undefined)
+
+  // The detail is spans, not one string: `label` is a key and `"New"` is a string, and a
+  // page with a syntax theme colours both by the names hljs would have given them.
+  assert.deepEqual([...detail.querySelectorAll('span')].map((span) => [span.className, span.textContent]),
+    [['hljs-attr', 'label'], ['hljs-string', '"New"']])
+})
+
+// A sample that fires on every pointermove would otherwise flash a name over itself
+// forever. The readout is the record and stays either way.
+test('no-toast leaves the counting alone and the preview clear', async() => {
+  const element = await mountFilled('manifest="m.json" no-edit no-toast')
+  const frame = element.querySelector('iframe')
+  const window = element.ownerDocument.defaultView
+
+  frame.dispatchEvent(new window.Event('load'))
+  const doc = frame.contentDocument
+  const badge = doc.createElement('demo-badge')
+  doc.body.appendChild(badge)
+  badge.dispatchEvent(new frame.contentWindow.CustomEvent('demo-badge-click'))
+
+  assert.equal(element.querySelector('.code-preview-toast'), null)
+  assert.equal(element.querySelector('.code-preview-event-count').textContent, '1×')
 })
 
 // The panel replaces the code block and nothing above it: the preview must not reload,

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "readme": "The manifest behind the options demo. Hand-written, because this repo documents an element that *reads* custom-elements.json and does not produce one — a real library generates this from JSDoc with @custom-elements-manifest/analyzer and ships it as its `customElements` key.\n\nEverything the panel uses is here and nothing else: attributes with a type and a default, cssProperties with a syntax and a default. `--demo-badge-size` deliberately has no default, so the panel falls back to what the frame computes for it.",
+  "readme": "The manifest behind the options demo. Hand-written, because this repo documents an element that *reads* custom-elements.json and does not produce one — a real library generates this from JSDoc with @custom-elements-manifest/analyzer and ships it as its `customElements` key.\n\nEverything the panel uses is here and nothing else: attributes with a type and a default, cssProperties with a syntax and a default, events with a description. `--demo-badge-size` deliberately has no default, so the panel falls back to what the frame computes for it. `--demo-badge-outline` defaults to `transparent`, which is the value no colour picker can hold and the panel draws as a crossed-out square.",
   "modules": [
     {
       "kind": "javascript-module",
@@ -23,9 +23,16 @@
             { "name": "--demo-badge-radius", "syntax": "<length>", "default": "6px", "description": "Corner radius. `999px` is a pill." },
             { "name": "--demo-badge-padding", "syntax": "<length>+", "default": "0.15em 0.6em", "description": "Padding inside the pill, in the shorthand's own order." },
             { "name": "--demo-badge-weight", "syntax": "normal | 500 | 600 | 700", "default": "600", "description": "Font weight of the label." },
-            { "name": "--demo-badge-size", "syntax": "<length>", "description": "Font size. Documented without a default on purpose — the panel reads the frame's computed value instead." }
+            { "name": "--demo-badge-size", "syntax": "<length>", "description": "Font size. Documented without a default on purpose — the panel reads the frame's computed value instead." },
+            { "name": "--demo-badge-outline", "syntax": "<color>", "default": "transparent", "description": "A ring around the pill. `transparent` by default, which is the value a colour picker cannot hold — hence the crossed-out swatch." }
           ],
-          "events": [],
+          "events": [
+            {
+              "name": "demo-badge-click",
+              "type": { "text": "CustomEvent" },
+              "description": "Fires when the badge is clicked. `detail.label` is what it says, `detail.badge` the element itself. Deliberately does not bubble — the panel listens in the capture phase, so it hears it anyway."
+            }
+          ],
           "slots": []
         }
       ]

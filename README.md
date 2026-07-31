@@ -82,6 +82,7 @@ Reach for something else when the shape of the problem is different:
 | `manifest-tag`    | which declaration in it to drive. Default: the first declared tag the sample uses |
 | `tab`             | `code` (default) or `options` — which pane is open, and the live state      |
 | `no-edit`         | render the preview, leave the code read-only                                |
+| `no-toast`        | no event name over the preview — the panel still counts what fires          |
 | `no-shrink`       | never size the preview below its tallest measurement                        |
 | `reload`          | always rebuild the frame on edit, never patch it                            |
 
@@ -253,6 +254,7 @@ answers:
 | ---------------- | ------------------------------------- | --------------------------------------------- |
 | `attributes[]`   | `type.text` — boolean, number, union  | **the sample source**, spliced into its opening tag |
 | `cssProperties[]`| `syntax` — `<color>`, `<time>`, union | **a stylesheet in the frame**, plus a rule to copy   |
+| `events[]`       | nothing — it is a readout             | **nothing.** It counts what the sample fires        |
 
 An attribute belongs to an element in the sample, so its knob rewrites the code above and
 the code tab keeps telling the truth. The splice is a regex over the opening tag rather
@@ -266,6 +268,14 @@ holding one rule whose selector is the element's own tag. Never `:root`; a prope
 an element beats one inherited from an ancestor, so a themed element would ignore it. That
 rule is printed at the bottom of the panel to be copied, which is worth more than the knobs
 are.
+
+An event is not a knob at all. Everything in `events[]` is listed whether or not it has
+fired, and counted as it does, with the last `detail` beside the count — an element whose
+whole API is a `CustomEvent` is otherwise a preview that appears to do nothing when you
+click it. The listeners go on the frame's *document*, in the capture phase: capture is what
+hears an event that does not bubble, which is most of them, and the document is what
+survives the `innerHTML` patch a keystroke does. A rebuilt frame is a new document with a
+new sample in it, so the counts start again.
 
 **An untouched knob writes nothing.** No attribute, no declaration. The manifest's default
 is a placeholder, not a value, so emptying a control is how you reset it.
@@ -286,6 +296,15 @@ is a placeholder, not a value, so emptying a control is how you reset it.
 defaults in a themeable library, a native colour input can hold none of them, and swapping
 one out for a hex value is how a knob silently destroys a theme that was correct. The text
 field is the control; the picker sits beside it and writes into it.
+
+The swatch does follow the field, though, because it fills the whole button and a button
+showing black beside a field that says `oklch(…)` is a lie the size of the control. The
+value is resolved by setting it on the swatch and reading the computed colour back, which
+is what turns a named colour, `hsl(…)` or a `color-mix(…)` into channels. Two cases cannot
+be shown as a colour, and neither is faked: **`transparent` is drawn as a thin red cross
+over a black square**, the way a mac shows no colour — there is no transparent in a picker,
+and the `alpha` attribute newer browsers accept only buys `#rrggbbaa`, not the keyword —
+and anything the engine cannot resolve leaves the swatch where it was.
 
 A property the manifest documents without a `default` falls back to what the frame computes
 for it, so an undocumented default still shows something true.
@@ -314,7 +333,7 @@ Same element in the first two, and the only difference is whether highlight.js r
 | ---------------------------------- | ---- | -------------------------------------------------------------------- |
 | `dist/code-preview.min.js`         | 11KB | the default. No highlighter; uses `window.hljs` if the page has one. |
 | `dist/code-preview-hljs.min.js`    | 53KB | highlight.js bundled in, for a page with none.                       |
-| `dist/code-preview-options.min.js` | 7KB  | the options panel, on top of either. Carries no copy of the element. |
+| `dist/code-preview-options.min.js` | 10KB | the options panel, on top of either. Carries no copy of the element. |
 
 The default reads the global per call rather than once at startup, so the order of the
 two script tags does not matter:

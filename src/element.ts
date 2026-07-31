@@ -50,6 +50,8 @@
 //   tab              `code` (default) or `options` — which panel is open, held the
 //                    same way `viewport-width` is: the attribute is the state
 //   no-edit          render the preview, leave the code read-only
+//   no-toast         no name over the preview when the sample fires a documented event —
+//                    for one that fires on every pointermove. The panel still counts it
 //   no-shrink        let the preview grow to its tallest measurement and stay there,
 //                    for a sample that would otherwise measure short and shift the
 //                    page as a font or an image lands
@@ -85,6 +87,11 @@ const attr = (value: string): string => value.replace(/&/g, '&amp;').replace(/"/
 // A sample that brings its own `<html>` owns its head: pass it through untouched
 // rather than injecting a second one around it.
 const isDocument = (src: string): boolean => /^\s*<(!doctype|html)\b/i.test(src)
+
+// A sample that carries its own `<script>` — the way a js demo is written, since there
+// is only ever one fence. It has to reload for the same reason a url in `js` does; see
+// `render`. `[\s>]` rather than `\b`, so `<scriptish>` is not a script.
+const hasScript = (src: string): boolean => /<script[\s>]/i.test(src)
 
 // Recolour one code block. Called for the first paint of a plain block and again on
 // every keystroke, so it has to be idempotent and must not alter `textContent` —
@@ -460,10 +467,15 @@ export class CodePreview extends HTMLElement {
   }
 
   // Patching the loaded document keeps the frame's stylesheets and scroll position,
-  // so a keystroke costs nothing. It is wrong in two cases, which are the same trap
-  // from both ends: `innerHTML` never executes scripts it inserts, and a script that
-  // already ran — a library from `js`, say — does not re-run against the markup
-  // replacing whatever it initialised. Either one means a real reload.
+  // so a keystroke costs nothing. It is wrong wherever a script is involved, which is
+  // the same trap from both ends: `innerHTML` never executes scripts it inserts, and a
+  // script that already ran — a library from `js`, say — does not re-run against the
+  // markup replacing whatever it initialised. Any of the three means a real reload.
+  //
+  // The sample's own inline `<script>` is the third, and it fails the most quietly of
+  // them: the first paint goes through srcdoc and works, and then the first keystroke
+  // patches, drops the script on the floor and leaves the demo rendered but dead, with
+  // nothing in the console to say why.
   private render(src: string): void {
     const frame = this.frame
     if (!frame || src === this.rendered) return
@@ -476,7 +488,7 @@ export class CodePreview extends HTMLElement {
     // a fresh iframe already holds an about:blank document with a body, so
     // patching before the first real load writes the sample into a blank page —
     // no stylesheet, no load event, and therefore no sizing either.
-    const patchable = this.loaded && !isDocument(src) && !this.assets.js.length && !this.hasAttribute('reload')
+    const patchable = this.loaded && !isDocument(src) && !this.reloads(src)
     if (patchable) {
       this.frame!.contentDocument!.body.innerHTML = src
       this.fit()
@@ -486,10 +498,16 @@ export class CodePreview extends HTMLElement {
     }
   }
 
+  // Whether this edit costs a reload rather than a patch. One predicate for both the
+  // decision and the debounce in front of it: they were written apart once, and an edit
+  // that reloads on a patch's delay is one reload per keystroke.
+  private reloads(src: string): boolean {
+    return this.assets.js.length > 0 || hasScript(src) || this.hasAttribute('reload')
+  }
+
   private schedule(src: string): void {
     if (this.timer) clearTimeout(this.timer)
-    const reloads = this.assets.js.length > 0 || this.hasAttribute('reload')
-    this.timer = setTimeout(() => this.render(src), reloads ? RELOAD_DELAY : PATCH_DELAY)
+    this.timer = setTimeout(() => this.render(src), this.reloads(src) ? RELOAD_DELAY : PATCH_DELAY)
   }
 
   private onFrameLoad(): void {

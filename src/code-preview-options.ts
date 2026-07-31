@@ -34,6 +34,10 @@
 //     and the code tab keeps telling the truth. Typing in the code tab can change the
 //     same attributes back, so the controls are re-read from the source whenever the
 //     Options tab is activated — the only moment a reader can see them.
+//   - **An event is not a knob at all.** `events[]` is rendered read-only: the panel says
+//     which events the element fires whether or not any has, and counts them as they
+//     arrive, so a sample whose only visible behaviour is a `CustomEvent` stops being a
+//     demo of nothing.
 //
 // An untouched knob writes nothing at all: no attribute, no declaration. That keeps the
 // code tab clean, keeps the copyable rule down to what was actually changed, and makes
@@ -82,6 +86,7 @@ export interface Declaration {
   name?: string
   attributes?: Entry[]
   cssProperties?: Entry[]
+  events?: Entry[]
 }
 
 export interface Manifest {
@@ -168,6 +173,82 @@ export function cssRule(tag: string, touched: Record<string, string>): string {
   const declarations = Object.entries(touched)
   if (!declarations.length) return ''
   return `${tag} {\n${declarations.map(([name, value]) => `  ${name}: ${value};`).join('\n')}\n}\n`
+}
+
+// What the swatch beside a colour field can show, given whatever the engine made of that
+// field's value. `<input type="color">` holds an opaque `#rrggbb` and nothing else — the
+// newer `alpha` attribute buys `#rrggbbaa`, still not the `transparent` keyword — so:
+//
+//   - a resolved colour comes back as the hex the picker can hold;
+//   - a fully transparent one comes back as `'transparent'`, which the stylesheet draws as
+//     the crossed-out square a mac shows for no colour, since a picker cannot;
+//   - anything else is `null`, meaning leave the swatch alone. A swatch claiming a colour
+//     the sample does not have is worse than one that has not moved.
+//
+// The input is a *computed* colour, which is what turns `hsl(…)`, a named colour or a
+// `color-mix(…)` into channels. Two serialisations, because a `color-mix()` in srgb comes
+// back as `color(srgb …)` in some engines and `rgb()` in others, and the demo's own default
+// is a `color-mix()`. Anything outside srgb — a real `color(display-p3 …)` — is `null`:
+// clamping a wide-gamut colour into a hex is a different colour, quietly.
+export function swatchFor(color: string, withAlpha = false): string | null {
+  const text = color.trim()
+  const rgb = /^rgba?\(([^)]*)\)$/i.exec(text)
+  const srgb = /^color\(\s*srgb\s+([^)]*)\)$/i.exec(text)
+  const parts = (rgb?.[1] ?? srgb?.[1] ?? '').split(/[\s,/]+/).filter(Boolean)
+  if (parts.length < 3) return null
+  // `color(srgb …)` is 0–1 per channel where `rgb()` is 0–255; a percentage is a
+  // percentage in both.
+  const scale = srgb ? 255 : 1
+  const channels = parts.slice(0, 3).map((part) => part.endsWith('%') ? parseFloat(part) * 2.55 : Number(part) * scale)
+  if (channels.some((channel) => !Number.isFinite(channel))) return null
+  const alpha = parts[3] === undefined ? 1 : parts[3].endsWith('%') ? parseFloat(parts[3]) / 100 : Number(parts[3])
+  if (alpha === 0) return 'transparent'
+  const byte = (value: number): string => Math.round(Math.min(255, Math.max(0, value))).toString(16).padStart(2, '0')
+  const hex = '#' + channels.map(byte).join('')
+  // A picker with `alpha` holds the eight-digit form, so a half-transparent sample stops
+  // being drawn as an opaque one. Fully opaque stays six digits — same colour, and the form
+  // every engine takes.
+  return withAlpha && Number.isFinite(alpha) && alpha < 1 ? hex + byte(alpha * 255) : hex
+}
+
+// A `detail` on one line, for the events readout.
+//
+// Not `JSON.stringify`: half of these carry an element — `detail.panel`, `detail.tab` —
+// which serialises as `{}` at best and throws on a cycle at worst. `instanceof Element` is
+// no good either, since the event comes out of the frame and that is a different realm
+// with a different `Element`; a `localName` is what a node has in every one of them.
+// The same line in pieces, so the readout can be coloured. highlight.js's own class names
+// rather than classes of ours: a docs page already ships a syntax theme, and the token it
+// paints green in a code block is the token this readout wants green too.
+export function detailTokens(detail: unknown): Array<{ text: string, cls?: string }> {
+  if (detail === null || detail === undefined) return []
+  // A `detail` is whatever the sample felt like passing: a paragraph of text, a function, a
+  // whole config object. One line means one line, and a value nobody can read at a glance is
+  // one nothing is lost by cutting — the sample's own console is where a full payload is read.
+  const clip = (text: string): string => text.length > 42 ? `${text.slice(0, 41)}…` : text
+  const one = (value: unknown): { text: string, cls?: string } => {
+    if (typeof value === 'string') return { text: clip(JSON.stringify(value)), cls: 'hljs-string' }
+    if (typeof value === 'number') return { text: String(value), cls: 'hljs-number' }
+    if (typeof value === 'function') return { text: 'ƒ', cls: 'hljs-literal' }
+    if (Array.isArray(value)) return { text: `[${value.length}]` }
+    if (value && typeof value === 'object') {
+      const node = value as { localName?: unknown }
+      return typeof node.localName === 'string'
+        ? { text: `<${node.localName}>`, cls: 'hljs-tag' }
+        : { text: '{…}' }
+    }
+    return { text: clip(String(value)), cls: 'hljs-literal' }
+  }
+  if (typeof detail !== 'object') return [one(detail)]
+  const parts: Array<{ text: string, cls?: string }> = []
+  for (const [key, value] of Object.entries(detail as Record<string, unknown>)) {
+    parts.push({ text: parts.length ? ', ' : '{ ' }, { text: key, cls: 'hljs-attr' }, { text: ': ' }, one(value))
+  }
+  return parts.length ? [...parts, { text: ' }' }] : []
+}
+
+export function describeDetail(detail: unknown): string {
+  return detailTokens(detail).map((token) => token.text).join('')
 }
 
 // `'a' | 'b'` out of a TypeScript type, `ease | linear` out of a Houdini syntax string.
@@ -293,6 +374,49 @@ let uid = 0
 // `<tabs-elemental>` uses next door, and for the same question.
 const FOCUSABLE = 'a[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]'
 
+// An event this sample has not fired yet — and the state every count goes back to when the
+// frame is rebuilt, since that is a new document with a new sample in it.
+const NEVER = '—'
+
+// A name over the preview for a moment, because the preview is where the reader is looking
+// when they click the thing that fires it — the panel readout is the record, this is the
+// notice. Opt out with `no-toast` on the element, which a sample that fires on every
+// pointermove wants.
+//
+// One box per element, reused: a second event mid-fade replaces the name and restarts the
+// animation rather than stacking, which keeps this a notice and not a log. Opacity only, so
+// there is nothing here for `prefers-reduced-motion` to object to.
+//
+// ponytail: absolutely positioned inside the viewport, which is a scroll container — a
+// sample tall enough to scroll (past `max-height: 70vh`) scrolls its toast away with it.
+// Anchor positioning fixes that properly once Firefox ships it.
+function toast(host: CodePreview, name: string): void {
+  if (host.hasAttribute('no-toast')) return
+  const viewport = host.querySelector('.code-preview-viewport')
+  if (!viewport) return
+  let node = viewport.querySelector<HTMLElement>('.code-preview-toast')
+  if (!node) {
+    node = document.createElement('div')
+    node.className = 'code-preview-toast'
+    // Not a live region: the panel's `aria-live` already says an event fired, and saying it
+    // twice is worse than not saying it here at all.
+    node.setAttribute('aria-hidden', 'true')
+    viewport.appendChild(node)
+  }
+  node.textContent = name
+  node.animate?.([{ opacity: 0 }, { opacity: 1, offset: 0.1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }], 1600)
+}
+
+// One piece of a `detail` line. Punctuation carries no class and stays a text node, so a
+// readout is a handful of spans rather than one per character.
+function paint(token: { text: string, cls?: string }): Node | string {
+  if (!token.cls) return token.text
+  const span = document.createElement('span')
+  span.className = token.cls
+  span.textContent = token.text
+  return span
+}
+
 // Show or hide one of the two panes.
 //
 // Hidden is `until-found` rather than a bare `hidden`, so find-in-page still searches the
@@ -406,13 +530,16 @@ export function buildOptions(host: CodePreview): void {
     tabs[to].click()
   })
 
-  // Filled in once the manifest lands. Re-reading the source and the frame is only worth
-  // anything at the moments the reader can actually see the controls, which is what the
-  // host calls `sync` for.
+  // Filled in once the manifest lands. Called at the two moments the host knows about —
+  // the tab changing and the frame loading — which are the only ones where either half of
+  // it has anything new to say: the controls are re-read from a source the reader may have
+  // typed into, and the frame's listeners are put back on a document that is new.
   let refresh = (): void => {}
 
   const sync = (): void => {
     const options = (host.getAttribute('tab') ?? 'code') === 'options'
+    // Whatever fired while this pane was hidden has now been read.
+    if (options) delete host.dataset.eventFired
     for (const tab of tabs) {
       const selected = (tab.dataset.tab === 'options') === options
       tab.setAttribute('aria-selected', String(selected))
@@ -435,7 +562,11 @@ export function buildOptions(host: CodePreview): void {
     }
     showPane(panel, options)
     showPane(codePanel, !options)
-    if (options) refresh()
+    // Unconditionally, and not only when the panel is showing: an event fired while the
+    // reader is on the code tab still has to be counted, so the frame's listeners cannot
+    // wait for the panel to be looked at. Re-reading the controls costs nothing here — the
+    // values come from the sample either way.
+    refresh()
   }
 
   host.onPanelSync = sync
@@ -487,12 +618,16 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
   // what they resolve to. A lazy frame has usually not loaded by the time the manifest
   // has, so this cannot be answered when the control is built.
   const undocumented: Array<[HTMLInputElement, string]> = []
+  // Each colour knob's "make the swatch agree with the field", called on every edit and
+  // again whenever the panel is re-read — a placeholder filled in from the frame is a
+  // colour the swatch can show too.
+  const swatches: Array<() => void> = []
 
   // A group per kind, because the two write to different places and a reader is owed
   // that distinction. `<fieldset>`/`<legend>` rather than a heading and an ARIA group:
   // it is the native way to name a set of controls, and there is nothing to get wrong.
-  const group = (label: string, rows: HTMLElement[]): void => {
-    if (!rows.length) return
+  const group = (label: string, rows: HTMLElement[]): HTMLElement | undefined => {
+    if (!rows.length) return undefined
     const fieldset = document.createElement('fieldset')
     fieldset.className = 'code-preview-group'
     const legend = document.createElement('legend')
@@ -502,6 +637,7 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
     for (const row of rows) knobs.appendChild(row)
     fieldset.append(legend, knobs)
     panel.appendChild(fieldset)
+    return fieldset
   }
 
   const row = (entry: Entry, control: HTMLElement): HTMLElement => {
@@ -553,14 +689,21 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
       writeRule()
     })
 
-    if (control.kind !== 'color') return row(entry, input)
+    // The second half of the condition is narrowing rather than doubt — a colour is a text
+    // field by construction — but an `x-code-preview.control` naming `select` would make it
+    // a set of colours to choose between, and a picker beside that is meaningless.
+    if (control.kind !== 'color' || !(input instanceof HTMLInputElement)) return row(entry, input)
 
-    // The picker, beside the text field rather than instead of it. It can only hold a
-    // hex value, so it writes one in and never reads the field back — a field holding
-    // `color-mix(…)` is not something a swatch can show, and pretending otherwise is
-    // how the value would get quietly rewritten.
+    // The picker, beside the text field rather than instead of it. The field is what is
+    // read — it is the only one of the two that can hold `currentcolor` or a
+    // `color-mix(…)` — and the picker writes a hex into it.
     const swatch = document.createElement('input')
     swatch.type = 'color'
+    // The opacity slider. Unknown attributes are ignored, so an engine without it keeps the
+    // opaque picker it always had; `canAlpha` is what decides whether an `#rrggbbaa` is safe
+    // to write back, since a picker without the attribute rejects one and keeps its old value.
+    swatch.toggleAttribute('alpha', true)
+    const canAlpha = 'alpha' in swatch
     swatch.className = 'code-preview-swatch'
     swatch.tabIndex = -1
     swatch.setAttribute('aria-label', `Pick a colour for ${entry.name}`)
@@ -568,11 +711,115 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
       input.value = swatch.value
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
+
+    // The other direction, which the swatch fills the whole button with a colour to be
+    // worth doing: a button showing black beside a field that says `oklch(…)` is a lie the
+    // size of the control. The value is resolved by setting it on the swatch and reading
+    // the computed colour back — the engine is what knows what a named colour or a
+    // `color-mix(…)` comes to — and an invalid value is rejected by the setter, so an
+    // unfinished `#7c5` never reaches it.
+    //
+    // ponytail: resolved in *this* document, not the frame's, so `currentcolor` here is
+    // the panel's text colour rather than the sample's. Reading it from the frame means
+    // putting a probe element inside the sample, which is a mutation a library that
+    // watches its own children would see — and this is a swatch.
+    const showSwatch = (): void => {
+      const value = (input.value.trim() || input.placeholder || '').trim()
+      swatch.style.color = ''
+      swatch.style.color = value
+      const shown = swatch.style.color ? swatchFor(getComputedStyle(swatch).color, canAlpha) : null
+      swatch.style.color = ''
+      swatch.classList.toggle('is-transparent', shown === 'transparent')
+      if (shown && shown !== 'transparent') swatch.value = shown
+    }
+    input.addEventListener('input', showSwatch)
+    swatches.push(showSwatch)
     const pair = document.createElement('span')
     pair.className = 'code-preview-colour'
     pair.append(input, swatch)
     return row(entry, pair)
   }))
+
+  // What the sample fires. Read-only, and rendered whether or not anything has fired yet:
+  // the list is the documentation half, the count and the last `detail` are the live half.
+  // An element whose entire api is a `CustomEvent` is otherwise a preview of a thing that
+  // appears to do nothing when you click it.
+  const events = (declaration.events ?? []).filter((entry) => !entry['x-code-preview']?.hidden)
+  const readouts = new Map<string, { count: HTMLElement, detail: HTMLElement, line: HTMLElement }>()
+
+  const eventsGroup = group('Events', events.map((entry) => {
+    // A `div` rather than the `<label>` the knobs use: there is no control here to label,
+    // and a label pointing at nothing is one a screen reader still offers to click. Its own
+    // class for the same reason — the row sits next to its name rather than in the knobs'
+    // control column, because a count is a word wide and a knob is a field wide.
+    const line = document.createElement('div')
+    line.className = 'code-preview-event'
+    if (entry.description) line.title = entry.description
+    const name = document.createElement('span')
+    name.className = 'code-preview-knob-name'
+    name.textContent = entry.name
+    // How many, and what came with the last one — two cells, so the counts line up down the
+    // group instead of each `detail` starting wherever its own count happened to end.
+    const readout = document.createElement('span')
+    readout.className = 'code-preview-event-value'
+    const count = document.createElement('span')
+    count.className = 'code-preview-event-count'
+    count.textContent = NEVER
+    const detail = document.createElement('span')
+    detail.className = 'code-preview-event-detail'
+    readout.append(count, detail)
+    readouts.set(entry.name, { count, detail, line })
+    line.append(name, readout)
+    return line
+  }))
+
+  // `aria-live` rather than `role="log"`: the role would take the group's name off its
+  // `<legend>`, and politeness is the half of it worth having. Set after the rows are in,
+  // so building the panel announces nothing — a live region only reports what changes
+  // after it exists.
+  eventsGroup?.setAttribute('aria-live', 'polite')
+
+  // The listeners go on the frame's *document*, in the capture phase. Capture is what
+  // catches an event that does not bubble — which is most of these, dispatched on the
+  // element itself — since every event passes its target's ancestors on the way down
+  // whatever `bubbles` says. The document is what survives the `innerHTML` patch a
+  // keystroke does, since patching only ever touches body.
+  //
+  // A rebuild is a new document and a new sample, so it needs its listeners back and its
+  // counts start again. Nothing is ever removed: the listeners die with the document they
+  // were added to.
+  const listening = new WeakSet<Document>()
+  const listen = (): void => {
+    const doc = host.frameDocument
+    if (!doc || !events.length || listening.has(doc)) return
+    listening.add(doc)
+    for (const entry of events) {
+      const readout = readouts.get(entry.name)
+      if (!readout) continue
+      readout.count.textContent = NEVER
+      readout.detail.replaceChildren()
+      let fired = 0
+      doc.addEventListener(entry.name, (event) => {
+        fired += 1
+        readout.count.textContent = `${fired}×`
+        readout.detail.replaceChildren(...detailTokens((event as CustomEvent).detail).map(paint))
+        // A count that ticks over is a change worth seeing happen — a row that only ever
+        // reads `7×` says an event fired at some point, not that one fired just now. WAAPI
+        // rather than a class and a keyframe, because restarting a css animation on every
+        // event needs a reflow poke and this does not. An engine that will not interpolate
+        // `color-mix` steps between the two instead, which still flashes.
+        readout.line.animate?.([
+          { backgroundColor: 'color-mix(in srgb, var(--accent, #0969da) 22%, transparent)' },
+          { backgroundColor: 'transparent' }
+        ], 450)
+        // The panel may be the pane nobody is looking at, and a live region inside a hidden
+        // one announces nothing either. The tab that holds it carries a dot until it is
+        // opened — cheaper than a toast, and it never covers the sample the event came from.
+        if ((host.getAttribute('tab') ?? 'code') !== 'options') host.dataset.eventFired = ''
+        toast(host, entry.name)
+      }, true)
+    }
+  }
 
   panel.appendChild(output)
 
@@ -586,6 +833,8 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
     for (const [input, name] of undocumented) {
       if (!input.placeholder) input.placeholder = computed(host, tag, name)
     }
+    for (const showSwatch of swatches) showSwatch()
+    listen()
   }
 }
 

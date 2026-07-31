@@ -17,6 +17,18 @@ shows up in a function signature.
 
 ### Fixed
 
+- **A sample's own `<script>` stopped running after the first edit.** A js demo keeps its
+  script inside the sample, because the element takes one fence — and an edit was applied
+  to the loaded frame with `innerHTML`, which never executes a script it inserts. The
+  first paint went through `srcdoc` and worked, so the demo only died from the first
+  keystroke on: still rendered, still correctly marked up, nothing in the console. Only
+  `js` urls and the `reload` attribute forced the rebuild; the sample's own script was
+  not looked at.
+
+  A sample containing a `<script>` now rebuilds the frame rather than patching it, on the
+  same longer debounce a `js` url already used. Nothing to change in a page: samples with
+  no script in them still patch, and keep their scroll position and stylesheets as before.
+
 - **A sample's own elements never came alive** when `js` pointed at a custom element
   bundle — which is most of what this element is for. The scripts went into `<head>`
   undeferred, so `customElements.define` ran *before* the body was parsed and the parser
@@ -74,6 +86,60 @@ shows up in a function signature.
 
 ### Added
 
+- **The options panel lists what the sample fires.** A third group, `Events`, built from
+  the manifest's `events[]` — every documented event is listed whether or not it has fired,
+  with a count and the last `detail` beside it once it has. An element whose whole API is a
+  `CustomEvent` was otherwise a preview that appears to do nothing when you click it.
+
+  The rows are `<div class="code-preview-event">` with a
+  `<span class="code-preview-event-value">` readout, and the `<fieldset>` around them
+  carries `aria-live="polite"`. Nothing here is a control, so nothing writes to the sample
+  or to the frame's stylesheet.
+
+  The listeners go on the frame's **document**, in the capture phase: capture is what hears
+  an event that does not bubble — most of them, dispatched on the element itself — and the
+  document is what survives the `innerHTML` patch a keystroke does. A rebuilt frame is a
+  new document with a new sample in it, so its counts start again from `—`.
+
+  They are also attached whichever tab is open, which is a behaviour change inside the
+  panel: the controls used to be re-read only when the Options tab was activated, and an
+  event fired while the reader is looking at the code still has to be counted.
+
+- **The event readout is highlighted, and says when it changed.** A `detail` is now written
+  as spans carrying highlight.js's own token classes — `hljs-attr` for a key, `hljs-string`,
+  `hljs-number`, `hljs-literal`, `hljs-tag` for a node — so a docs page that already ships a
+  syntax theme colours it with no extra css. `dist/code-preview-hljs.css` scopes its rules to
+  `:is(pre code, .code-preview-event-value)` for the same reason; a theme of your own that
+  targeted the `pre code` form still wins on any real code block. The readout's text is
+  unchanged, so anything reading `textContent` reads what it read before.
+
+  A `detail` is one line and stays one line: a string over 42 characters is clipped, a
+  function is `ƒ`, anything nested is `{…}` and an array is its length. The sample's own
+  console is where a full payload is read.
+
+  The readout is now two cells — `<span class="code-preview-event-count">` and
+  `<span class="code-preview-event-detail">` inside the same
+  `.code-preview-event-value` — and the row no longer borrows the knobs' column grid. A
+  knob's second column is a field wide, which put a two-character count an inch from the
+  name it belongs to; the name takes what it needs and the count follows it, with the
+  `detail`s lined up in a column of their own.
+
+- **An event says so over the preview.** The name of a documented event appears in a
+  `<div class="code-preview-toast">` inside `.code-preview-viewport` for about a second and a
+  half whenever the sample fires one — that is where the reader is looking when they click
+  the thing that fires it. One box per element, reused, and opacity only, so there is
+  nothing in it for `prefers-reduced-motion` to object to. **`no-toast`** on the element
+  turns it off, for a sample that fires on every `pointermove`; the panel still counts.
+
+  `.code-preview-viewport` is now `position: relative` — it is the toast's containing block,
+  so the notice lands on the sample rather than on the toolbar. A sample tall enough to
+  scroll (past `max-height: 70vh`) scrolls its toast with it, until anchor positioning is
+  available everywhere.
+
+  The row also flashes when its count goes up, and if the event landed in the hidden pane
+  the element takes `data-event-fired` until the Options tab is opened — the stylesheet
+  draws that as a dot on the tab.
+
 - **A keyboard hint**, `<p class="code-preview-hint">`, appended to the element for every
   editable sample: `Press Esc, then Tab, to leave the editor`, becoming `Tab now leaves
   the editor` once Esc has been pressed. It is the `aria-describedby` of the editor and a
@@ -93,6 +159,37 @@ shows up in a function signature.
   so the tab strip hides it itself, with `display: none` on any tab but `code`. Left
   showing it would be a live region describing an editor the reader has switched away
   from.
+
+### Changed
+
+- **The colour swatch is the colour.** `<input type="color">` draws the value as a square
+  inset inside its own padding and border, which at 1.75rem is more chrome than colour, and
+  the chrome was already drawn around it by this stylesheet. The value now fills the button
+  (`::-webkit-color-swatch-wrapper`, `::-webkit-color-swatch`, `::-moz-color-swatch`, one
+  rule each — a selector list containing a pseudo-element the engine does not know is a
+  list it drops whole).
+
+  That only pays if the colour is true, so the swatch now follows the field: the value is
+  resolved by setting it on the swatch and reading the computed colour back, which is what
+  turns a named colour, `hsl(…)` or a `color-mix(…)` into channels. A value nothing can
+  resolve leaves the swatch where it was, rather than claiming a colour the sample does not
+  have.
+
+- **`transparent` is drawn as a crossed-out square**, a thin red cross over black, the way
+  a mac shows no colour. There is no transparent in a colour picker: `<input type="color">`
+  holds an opaque `#rrggbb` and nothing else, and the newer `alpha` attribute only buys
+  `#rrggbbaa` — still not the keyword, which is a real default in a themeable library. The
+  text field remains the control; the swatch stops lying about it. The class is
+  `.code-preview-swatch.is-transparent`, and the cross takes `--danger`.
+
+- **The `<select>` caret is drawn rather than left to the platform**, which put it hard
+  against the field's right edge with 0.375rem of padding on the other side. It now sits at
+  the same 0.375rem, and takes `currentColor` — two gradients making one triangle, so there
+  is no data uri to recolour per theme and no extra element.
+
+- **Group titles are uppercased** — `Attributes`, `Custom properties`, `Events`. Only the
+  legends: the names below them are verbatim attribute and custom-property names, where
+  case is meaning.
 
 ## [0.2.0] - 2026-07-31
 

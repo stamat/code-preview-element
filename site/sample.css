@@ -32,12 +32,17 @@ body {
 .card h3 { margin: 0 0 0.5rem; }
 .card p { margin: 0; }
 
-/* The stand-in for a documented custom element, for the options panel to drive. There is
-   no JavaScript behind it and there does not need to be: an unknown tag is an inline box
-   the page can style, `content: attr(…)` renders its text attributes, and the theme it is
-   themed with is custom properties set on the element itself — which is exactly the shape
-   the panel writes to, and the reason its rule uses the tag as its selector rather than
-   `:root`, where an inherited value would lose to the one set here. */
+/* The stand-in for a documented custom element, for the options panel to drive. It is not
+   a custom element and does not need to be: an unknown tag is an inline box the page can
+   style, `content: attr(…)` renders its text attributes, and the theme it is themed with
+   is custom properties set on the element itself — which is exactly the shape the panel
+   writes to, and the reason its rule uses the tag as its selector rather than `:root`,
+   where an inherited value would lose to the one set here. The only JavaScript in the
+   frame is sample.js, a delegated click listener that gives the panel's Events group
+   something to count, and the badge knows nothing about it.
+
+   `--demo-badge-outline` defaults to `transparent` on purpose: it is the value no colour
+   picker can hold, and the swatch beside its field is the crossed-out square that says so. */
 demo-badge {
   --demo-badge-bg: color-mix(in srgb, currentcolor 12%, transparent);
   --demo-badge-fg: currentcolor;
@@ -45,14 +50,18 @@ demo-badge {
   --demo-badge-padding: 0.15em 0.6em;
   --demo-badge-weight: 600;
   --demo-badge-size: 0.8125rem;
+  --demo-badge-outline: transparent;
 
   display: inline-block;
   padding: var(--demo-badge-padding);
   border-radius: var(--demo-badge-radius);
+  outline: 2px solid var(--demo-badge-outline);
+  outline-offset: 1px;
   background: var(--demo-badge-bg);
   color: var(--demo-badge-fg);
   font-size: var(--demo-badge-size);
   font-weight: var(--demo-badge-weight);
+  cursor: pointer;
 }
 
 demo-badge::before { content: attr(label); }

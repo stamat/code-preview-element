@@ -62,6 +62,7 @@
         "dist/code-preview-options.min.js",
         "dist/code-preview.min.css",
         "site/sample.css",
+        "site/sample.js",
         "site/sample-manifest.json"
       ],
       "out": "_site"

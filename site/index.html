@@ -84,7 +84,13 @@ description: Live, editable HTML samples in an isolated iframe — the element d
   property</strong> is not part of the sample at all: it goes into a stylesheet inside the
   frame, exactly where you would put it, and the rule is printed at the bottom of the panel
   for you to copy. Turn nothing, and nothing is written.</p>
-<code-preview css="sample.css" theme-attribute="data-theme" manifest="sample-manifest.json" tab="options">
+<p><strong>Events</strong> are the third group, and the only read-only one: everything in
+  <code>events[]</code> is listed whether or not it has fired, and counted as it does.
+  Click the badge in the preview. The colour swatch beside
+  <code>--demo-badge-outline</code> is the other thing worth looking at — its default is
+  <code>transparent</code>, which no colour picker can hold, so it is drawn crossed out
+  rather than shown as black.</p>
+<code-preview css="sample.css" js="sample.js" theme-attribute="data-theme" manifest="sample-manifest.json" tab="options">
   <pre><code class="language-html">&lt;p&gt;Shipping status: &lt;demo-badge label="New" count="3"&gt;&lt;/demo-badge&gt;&lt;/p&gt;</code></pre>
 </code-preview>
 
