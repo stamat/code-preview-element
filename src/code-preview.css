@@ -163,13 +163,34 @@ code-preview:focus-within > pre {
 }
 
 /* A sample whose script threw. The message comes from the frame's own error event,
-   so it names the line rather than just saying something broke. */
+   so it names the line rather than just saying something broke.
+
+   Last box in the stack, so it takes the bottom corners the code block would
+   otherwise own — same trick as the width bar at the top, from the other end.
+   Tinted from --danger rather than given a flat red background, so it reads as an
+   error in a dark theme too without this sheet knowing which one it is in: a
+   transparent wash over whatever --bg already is. */
 code-preview[data-error]::after {
   content: "⚠ " attr(data-error);
   display: block;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border, #d8d8d8);
+  /* The code block above brings its own bottom border; two of them read as one thick
+     misaligned line. */
   border-top: 0;
+  border-radius: 0 0 var(--radius, 6px) var(--radius, 6px);
+  background: color-mix(in srgb, var(--danger, #cf222e) 8%, transparent);
   font: 0.875rem/1.4 var(--font-mono, ui-monospace, monospace);
-  color: var(--fg-muted, #656d76);
+  color: var(--danger, #cf222e);
+  /* A stack frame's url is one long unbroken token, and an error is the worst thing
+     to let overflow the box silently. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* With the banner there, the block above it is no longer the bottom of the object. */
+code-preview[data-error] > pre,
+code-preview[data-error] > .code-wrap > pre {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }

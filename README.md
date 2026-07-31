@@ -79,6 +79,7 @@ Reach for something else when the shape of the problem is different:
 | `viewport-width`  | render at this css width and scale it down to fit                           |
 | `viewport-widths` | whitespace-separated widths to offer as buttons                             |
 | `no-edit`         | render the preview, leave the code read-only                                |
+| `no-shrink`       | never size the preview below its tallest measurement                        |
 | `reload`          | always rebuild the frame on edit, never patch it                            |
 
 Relative urls in `css`/`js` resolve against the **host page** — that is what a
@@ -265,7 +266,9 @@ and `./hljs`.
 
 The required sheet is the minimum plus as little taste as possible. Every colour is a
 custom property with a fallback — a host page that already defines `--border`, `--bg`,
-`--accent`, `--fg-muted`, `--radius` or `--font-mono` gets its own look for free.
+`--accent`, `--fg-muted`, `--danger`, `--radius` or `--font-mono` gets its own look for
+free. `--danger` is only the error banner, the strip below the code block that appears
+when a sample's own script throws.
 
 The element and the code block are meant to read as one object, so the preview has no
 bottom border (the code block below brings its own) and the block inside gets no
@@ -307,6 +310,21 @@ actually known, and there is nothing left to guess:
 
 Measured on the demo page, headless Chrome at 1200×900: CLS `0.0285` with the
 reservation at `4rem`, `0.0167` at `12rem`, `0.0022` at the `8rem` default.
+
+A second shift is possible after that one: a re-measure that comes back *shorter*
+than the last — a webfont or an image landing late, a narrower column scaling the
+frame down — pulls the page back up. `no-shrink` holds the tallest measurement
+instead, trading some empty space below a sample for a preview that never moves what
+is under it:
+
+```html
+<code-preview css="dist/my-library.css" no-shrink> … </code-preview>
+```
+
+It is per element and off by default, because a sample whose height genuinely varies
+— an edit that deletes half the markup, a demo that toggles a panel — should follow
+its content down. A new source or a new `viewport-width` resets the remembered height
+either way.
 
 Caching measured heights in `localStorage` was tried and removed. It bought nothing
 over a well-centred reservation, and a key can only name a stylesheet's url, not its

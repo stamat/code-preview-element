@@ -44,6 +44,9 @@
 //                    `viewport-width` — the attribute stays the single source of
 //                    truth, so external code can drive it just as well
 //   no-edit          render the preview, leave the code read-only
+//   no-shrink        let the preview grow to its tallest measurement and stay there,
+//                    for a sample that would otherwise measure short and shift the
+//                    page as a font or an image lands
 //   reload           always rebuild the frame on edit, never patch it
 import { CodeJar } from 'codejar'
 
@@ -147,6 +150,14 @@ export class CodePreview extends HTMLElement {
   private loaded = false
   // Pending measure, so a burst of resizes measures once.
   private raf = 0
+  // Tallest height this sample has measured at, under `no-shrink`. A re-fit may
+  // measure shorter than the last one for reasons that are not the sample changing —
+  // a narrower column scales the frame down, a font or an image lands late — and
+  // letting the wrapper follow that down shifts everything below it, twice, for a
+  // preview showing the same thing. Off by default, because a preview that only ever
+  // grows is the wrong trade for a sample whose height genuinely varies. Reset
+  // wherever the size is *meant* to change: a new source, a new emulated width.
+  private peak = 0
   connectedCallback(): void {
     // Moving the element in the dom re-runs this; build once, or the move costs a
     // second viewport and a second width bar stacked on the first. Only the theme
@@ -228,6 +239,7 @@ export class CodePreview extends HTMLElement {
     // nothing to resize yet, and connectedCallback does the first fit anyway.
     if (name !== 'viewport-width' || before === after || !this.frame) return
     this.syncBar()
+    this.peak = 0
     this.fit()
   }
 
@@ -312,6 +324,9 @@ export class CodePreview extends HTMLElement {
     const frame = this.frame
     if (!frame) return
     delete this.dataset.error
+    // The sample itself changed, so the last measurement no longer describes it — an
+    // edit that deletes half the markup has to be able to shrink the preview back.
+    this.peak = 0
     // `loaded` is the guard that matters, and the presence of `doc.body` is not:
     // a fresh iframe already holds an about:blank document with a body, so
     // patching before the first real load writes the sample into a blank page —
@@ -423,7 +438,9 @@ export class CodePreview extends HTMLElement {
     // the difference added back every preview is short by its own border. Measured, so
     // it survives whatever border or padding the stylesheet ends up putting there.
     const chrome = viewport.offsetHeight - viewport.clientHeight
-    const height = `${visible + chrome}px`
+    const measured = visible + chrome
+    this.peak = this.hasAttribute('no-shrink') ? Math.max(this.peak, measured) : measured
+    const height = `${this.peak}px`
     // Writing an unchanged height would be a no-op, but the wrapper is observed for
     // width changes, and an unchanged write still costs a layout pass per demo.
     if (viewport.style.height !== height) viewport.style.height = height
