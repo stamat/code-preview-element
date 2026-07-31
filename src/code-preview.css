@@ -358,6 +358,9 @@ code-preview .code-preview-options[hidden] {
    and an equal negative inline margin so the name still starts at the panel's edge, which
    is the same trade the event rows make one group below. */
 code-preview .code-preview-group > summary {
+  /* Fit rather than fill: a summary is a block box, so the wash below would otherwise run
+     the width of the panel for a name a few words long. */
+  inline-size: fit-content;
   padding: 0.125rem 0.375rem;
   margin-inline: -0.375rem;
   border-radius: calc(var(--code-preview-radius, var(--radius, 6px)) / 2);
