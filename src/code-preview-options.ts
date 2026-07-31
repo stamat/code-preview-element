@@ -827,7 +827,7 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
         // event needs a reflow poke and this does not. An engine that will not interpolate
         // `color-mix` steps between the two instead, which still flashes.
         readout.line.animate?.([
-          { backgroundColor: 'color-mix(in srgb, var(--accent, #0969da) 22%, transparent)' },
+          { backgroundColor: 'color-mix(in srgb, var(--code-preview-accent, var(--accent, #0969da)) 22%, transparent)' },
           { backgroundColor: 'transparent' }
         ], 450)
         toast(host, entry.name)

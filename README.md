@@ -488,10 +488,36 @@ hljs's colors, the other is hljs itself. Under the package exports they are `./t
 and `./hljs`.
 
 The required sheet is the minimum plus as little taste as possible. Every color is a
-custom property with a fallback — a host page that already defines `--border`, `--bg`,
-`--accent`, `--fg-muted`, `--danger`, `--radius` or `--font-mono` gets its own look for
-free. `--danger` is only the error banner, the strip below the code block that appears
-when a sample's own script throws.
+custom property with a fallback, and every one of them is namespaced:
+
+| Property                   | Default                    | What it colors                      |
+| -------------------------- | -------------------------- | ----------------------------------- |
+| `--code-preview-bg`        | `#fff`                     | bar, frame, options panel, controls |
+| `--code-preview-fg`        | `inherit`                  | the selected tab, a hovered one     |
+| `--code-preview-fg-muted`  | `#656d76`                  | tabs, buttons, labels, the hint     |
+| `--code-preview-border`    | `#d8d8d8`                  | every border in the element          |
+| `--code-preview-accent`    | `#0969da`                  | focus rings, the tooltip, checkboxes and ranges |
+| `--code-preview-danger`    | `#cf222e`                  | the error banner and the transparent-swatch cross |
+| `--code-preview-radius`    | `6px`                      | the outer corners; controls take half |
+| `--code-preview-font-mono` | `ui-monospace, monospace`  | every bit of text in the chrome     |
+
+`--code-preview-danger` is only the error banner, the strip below the code block that
+appears when a sample's own script throws.
+
+Each one falls back to its unprefixed name before its default — `--code-preview-bg` to
+`--bg` to `#fff` — so a host page that already defines `--border`, `--bg`, `--accent`,
+`--fg`, `--fg-muted`, `--danger`, `--radius` or `--font-mono` still gets its own look
+for free, and a page that wants to move this element alone sets the prefixed name:
+
+```css
+:root {
+  --bg: #0d1117;
+} /* themes the page, and this element with it */
+
+code-preview {
+  --code-preview-bg: #161b22;
+} /* moves this element only */
+```
 
 The element and the code block are meant to read as one object, so the preview has no
 bottom border (the code block below brings its own) and the block inside gets no

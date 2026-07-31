@@ -16,7 +16,7 @@
 
 :is(pre code, .code-preview-event-value) .hljs-comment,
 :is(pre code, .code-preview-event-value) .hljs-quote {
-  color: var(--fg-muted, #656d76);
+  color: var(--code-preview-fg-muted, var(--fg-muted, #656d76));
   font-style: italic;
 }
 
@@ -49,7 +49,7 @@
 :is(pre code, .code-preview-event-value) .hljs-tag { color: #e8590c; }
 
 :is(pre code, .code-preview-event-value) .hljs-meta,
-:is(pre code, .code-preview-event-value) .hljs-deletion { color: var(--fg-muted, #656d76); }
+:is(pre code, .code-preview-event-value) .hljs-deletion { color: var(--code-preview-fg-muted, var(--fg-muted, #656d76)); }
 
 @media (prefers-color-scheme: dark) {
   :is(pre code, .code-preview-event-value) .hljs-keyword,

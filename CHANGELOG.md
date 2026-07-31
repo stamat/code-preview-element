@@ -115,6 +115,29 @@ shows up in a function signature.
 
 ### Added
 
+- **Every color and font the stylesheet reads now has a `--code-preview-` name.**
+  `--code-preview-bg`, `--code-preview-fg`, `--code-preview-fg-muted`,
+  `--code-preview-border`, `--code-preview-accent`, `--code-preview-danger`,
+  `--code-preview-radius` and `--code-preview-font-mono` join the four
+  `--code-preview-*` sizing properties that were already there, so nothing about the
+  element's look is reachable except through its own namespace.
+
+  Nothing to change in a page. Each one falls back to the unprefixed name it used to
+  read before its default — `var(--code-preview-bg, var(--bg, #fff))` — so a host page
+  themed through `--border`, `--bg`, `--accent`, `--fg`, `--fg-muted`, `--danger`,
+  `--radius` or `--font-mono` looks exactly as it did. The prefixed name is only the
+  first lookup, which is what makes it possible to move this element alone without
+  moving the page around it:
+
+  ```css
+  code-preview {
+    --code-preview-bg: #161b22;
+  }
+  ```
+
+  `dist/code-preview-hljs.css` reads `--code-preview-fg-muted` the same way, so the
+  optional syntax theme moves with the element rather than with the page.
+
 - **The options panel lists what the sample fires.** A third group, `Events`, built from
   the manifest's `events[]` — every documented event is listed whether or not it has fired,
   with a count and the last `detail` beside it once it has. An element whose whole API is a

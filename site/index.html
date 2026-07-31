@@ -4,8 +4,10 @@ description: Live, editable HTML samples in an isolated iframe — the element d
 ---
 {# The page is the docs theme's `prose` layout: topbar, one article, its own tokens and
    its own highlight.js colors. Which makes it the honest test — the element's stylesheet
-   only ever reaches for --border, --bg, --fg, --fg-muted, --accent, --radius and
-   --font-mono with a fallback, so it takes the theme's without being told. #}
+   names its own --code-preview-* properties, and every one of them falls back to the
+   generic --border, --bg, --fg, --fg-muted, --accent, --radius or --font-mono before
+   its default. This page sets none of the prefixed ones, so the element takes the
+   theme's tokens through that second level without being told. #}
 
 {# After css/prose.min.css, so the two rules they both write — the `pre` margin and the
    iframe's aspect-ratio — go to the element on equal specificity. The third one, the
