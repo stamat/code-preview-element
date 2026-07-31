@@ -80,6 +80,27 @@ let uid = 0
 const TAB_CAUGHT = 'Press Esc, then Tab, to leave the editor'
 const TAB_FREE = 'Tab now leaves the editor'
 
+// Which way focus is arriving. The hint is advice about a key, so it is for someone who
+// got there with keys — a pointer user can click straight back out of the editor and
+// does not need a line of text appearing under every sample they click into.
+//
+// Tracked rather than read off `:focus-visible`: a contenteditable matches that
+// pseudo-class on a mouse click too, because a ua assumes anything taking text input
+// wants its focus ring. Right for a ring, wrong for this.
+//
+// On the document and in capture, because the keypress that moves focus into an editor
+// lands on whatever had focus before it — which is not this element. Per document, so a
+// sample inside an iframe is watched too, and a `WeakSet` so twenty editors on a page
+// still add one pair of listeners each.
+let keyboardIntent = false
+const watched = new WeakSet<Document>()
+function watchIntent(doc: Document): void {
+  if (watched.has(doc)) return
+  watched.add(doc)
+  doc.addEventListener('keydown', () => { keyboardIntent = true }, true)
+  doc.addEventListener('pointerdown', () => { keyboardIntent = false }, true)
+}
+
 const list = (value: string | null): string[] => (value ?? '').split(/\s+/).filter(Boolean)
 
 const attr = (value: string): string => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -642,7 +663,9 @@ export class CodePreview extends HTMLElement {
     // itself runs after CodeJar's, which has already called `preventDefault` on the
     // Tab by then. Both are stable references, so reconnecting cannot double them up.
     this.addEventListener('keydown', this.releaseTab, true)
+    this.addEventListener('focusin', this.showHint, true)
     this.addEventListener('focusout', this.catchTab, true)
+    watchIntent(this.ownerDocument)
     this.classList.add('is-editable')
   }
 
@@ -660,11 +683,15 @@ export class CodePreview extends HTMLElement {
   // CodeJar's own option is flipped rather than the key intercepted, because Shift+Tab
   // has to escape backwards too, and outdent is its handler and not ours.
   private releaseTab = (event: KeyboardEvent): void => {
-    if (event.key !== 'Escape' || event.defaultPrevented) return
-    // Only an Escape pressed in the editor: the listener is on the host, so one pressed
-    // in the options panel or on a width button would otherwise flip the editor's Tab
-    // handling — and rewrite a hint about an editor the reader is not in.
+    // Only a key pressed in the editor: the listener is on the host, so an Escape in the
+    // options panel or on a width button would otherwise flip the editor's Tab handling —
+    // and rewrite a hint about an editor the reader is not in.
     if (!this.code?.contains(event.target as Node)) return
+    // Clicked in, then started typing: someone who arrived by pointer is a keyboard user
+    // now, and the next Tab indents on them like everyone else's. Late is the right time
+    // for the hint to turn up; never is not.
+    this.classList.add('is-key-focus')
+    if (event.key !== 'Escape' || event.defaultPrevented) return
     this.jar?.updateOptions({ catchTab: false })
     // Pressing Escape is otherwise silent, and a key that appears to do nothing is a key
     // nobody presses twice. The hint is already on screen, so saying it there costs a
@@ -672,7 +699,18 @@ export class CodePreview extends HTMLElement {
     if (this.hint) this.hint.textContent = TAB_FREE
   }
 
+  // The visible half of the hint, gated on how focus got here. The `aria-describedby` is
+  // not gated with it: a screen reader is a keyboard, and the description is read on
+  // arrival either way.
+  private showHint = (event: FocusEvent): void => {
+    if (!this.code?.contains(event.target as Node)) return
+    this.classList.toggle('is-key-focus', keyboardIntent)
+  }
+
+  // Focus leaving anything in the element, which is a superset of focus leaving the
+  // editor — harmless, because a move within it fires the `focusin` above straight after.
   private catchTab = (): void => {
+    this.classList.remove('is-key-focus')
     this.jar?.updateOptions({ catchTab: true })
     if (this.hint) this.hint.textContent = TAB_CAUGHT
   }

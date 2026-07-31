@@ -198,6 +198,17 @@ the editor` once Esc has been pressed. It is the `aria-describedby` of the edito
   absolutely, so it costs no layout — which is why `code-preview` is now
   `position: relative`.
 
+  It shows for a keyboard and not for a pointer, because it is advice about a key and
+  someone who clicked in can click back out. The element sets **`.is-key-focus`** on
+  itself when focus arrives on a keypress rather than a click, so the rule is
+  `code-preview.is-key-focus:has(pre:focus-within)`; it is dropped again on `focusout`,
+  and added late if someone who clicked in starts typing, since from that keystroke on
+  they are in the same trap. Not `:focus-visible` — a `contenteditable` matches that on a
+  mouse click too, because a browser assumes anything taking text input wants its focus
+  ring — so intent is tracked with a `keydown`/`pointerdown` pair per document, added once
+  however many editors a page has. A screen reader is unaffected either way:
+  `aria-describedby` is read on arrival however focus got there.
+
   An editable block gets `padding-block-end: var(--code-preview-hint-space, 2.25rem)` to
   hold the room the hint sits in. Reserved from upgrade rather than added on focus:
   growing the block at the moment someone clicks into it would shift the page under their

@@ -269,6 +269,24 @@ test('Escape hands Tab back, and leaving the editor takes it again', () => {
     return event.defaultPrevented
   }
 
+  // The hint is advice about a key, so it is for whoever arrived on keys. A pointer user
+  // can click straight back out and does not need a sentence under every sample they
+  // click into — but the moment they touch the keyboard they are in the same trap, so it
+  // has to turn up late rather than not at all.
+  const arrive = (kind) => {
+    win.document.dispatchEvent(kind === 'key'
+      ? new win.KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
+      : new win.Event('pointerdown', { bubbles: true }))
+    code.dispatchEvent(new win.FocusEvent('focusin', { bubbles: true }))
+  }
+  arrive('key')
+  assert.ok(element.classList.contains('is-key-focus'), 'tabbing into the editor showed no hint')
+  code.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }))
+  arrive('pointer')
+  assert.equal(element.classList.contains('is-key-focus'), false, 'clicking into the editor showed the hint anyway')
+  press('a')
+  assert.ok(element.classList.contains('is-key-focus'), 'typing after a click never brought the hint back')
+
   assert.equal(press('Tab'), true, 'Tab stopped indenting')
   press('Escape')
   assert.equal(press('Tab'), false, 'Escape did not hand Tab back: the editor is a keyboard trap')
