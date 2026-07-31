@@ -115,7 +115,7 @@ export const openTag = (tag: string): RegExp =>
   new RegExp(`<${tag.replace(/[^\w-]/g, '')}(?=[\\s/>])(?:"[^"]*"|'[^']*'|[^>'"])*>`, 'i')
 
 const attributeIn = (name: string): RegExp =>
-  new RegExp(`\\s+${name.replace(/[^\w:.-]/g, '')}(\\s*=\\s*("[^"]*"|'[^']*'|[^\\s/>]+))?`, 'i')
+  new RegExp(`\\s+${name.replace(/[^\w:.-]/g, '').replace(/\./g, '\\.')}(\\s*=\\s*("[^"]*"|'[^']*'|[^\\s/>]+))?`, 'i')
 
 // Splice one attribute into the sample's first `<tag …>`, leaving the rest of the markup
 // byte-identical. `null` removes it, `''` writes it bare (`checked`), anything else
@@ -202,13 +202,16 @@ export function swatchFor(color: string, withAlpha = false): string | null {
   const channels = parts.slice(0, 3).map((part) => part.endsWith('%') ? parseFloat(part) * 2.55 : Number(part) * scale)
   if (channels.some((channel) => !Number.isFinite(channel))) return null
   const alpha = parts[3] === undefined ? 1 : parts[3].endsWith('%') ? parseFloat(parts[3]) / 100 : Number(parts[3])
+  // An alpha that did not parse is not an opaque one — "leave the swatch alone", like
+  // every other value this cannot be sure about.
+  if (!Number.isFinite(alpha)) return null
   if (alpha === 0) return 'transparent'
   const byte = (value: number): string => Math.round(Math.min(255, Math.max(0, value))).toString(16).padStart(2, '0')
   const hex = '#' + channels.map(byte).join('')
   // A picker with `alpha` holds the eight-digit form, so a half-transparent sample stops
   // being drawn as an opaque one. Fully opaque stays six digits — same colour, and the form
   // every engine takes.
-  return withAlpha && Number.isFinite(alpha) && alpha < 1 ? hex + byte(alpha * 255) : hex
+  return withAlpha && alpha < 1 ? hex + byte(alpha * 255) : hex
 }
 
 // A `detail` on one line, for the events readout.
@@ -362,6 +365,9 @@ function loadManifest(url: string): Promise<Manifest> {
       return response.json() as Promise<Manifest>
     })
     manifests.set(url, pending)
+    // A failure is not worth caching: leaving it in the map means one transient network
+    // error costs every preview that mounts later its panel too, until the page reloads.
+    pending.catch(() => manifests.delete(url))
   }
   return pending
 }
@@ -657,8 +663,14 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
     const input = inputFor(control)
     // The manifest's default as a placeholder rather than a value: an empty field means
     // "whatever the element does on its own", which is also what emptying it writes. A
-    // checkbox has no room to say so, and its default is visible in the box either way.
-    if (entry.default && input instanceof HTMLInputElement && input.type !== 'checkbox') input.placeholder = entry.default
+    // select says it on its empty option, the same way a custom property's does. A
+    // checkbox has no room to say so at all — one documented to default true reads
+    // unchecked when the sample omits the attribute, which is the one control here
+    // whose empty state can disagree with the element's. The description carries it.
+    if (entry.default) {
+      if (input instanceof HTMLSelectElement) input.options[0].textContent = `default (${entry.default})`
+      else if (input instanceof HTMLInputElement && input.type !== 'checkbox') input.placeholder = entry.default
+    }
     inputs.set(entry.name.toLowerCase(), input)
     input.addEventListener('input', () => {
       const value = input instanceof HTMLInputElement && input.type === 'checkbox'

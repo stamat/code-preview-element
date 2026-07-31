@@ -31,6 +31,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # CI runs on branches, not tags — without this a tag cut from a broken commit
+      # would publish untested code.
+      - name: Test
+        run: npm test
+
       # dist/ is gitignored, so the tarball is built by the prepack script
       - name: Publish
         run: npm publish

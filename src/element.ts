@@ -31,7 +31,7 @@
 //
 // No highlighter is imported here, and the element is not registered here either:
 // both are the entry file's job, so that the bundle with highlight.js in it and the
-// bundle without can be the same element. See code-preview.ts and code-preview-lite.ts.
+// bundle without can be the same element. See code-preview.ts and code-preview-hljs.ts.
 //
 // Attributes:
 //   css              whitespace-separated stylesheet urls for the frame
@@ -246,12 +246,6 @@ export class CodePreview extends HTMLElement {
     const frame = document.createElement('iframe')
     frame.className = 'code-preview-frame'
     frame.title = 'Rendered preview'
-    // The frame is sized to its whole document, so it should never need to scroll —
-    // and a scrollbar inside it would be scaled along with everything else and steal
-    // width from the layout being demonstrated. The wrapper is the one thing that
-    // scrolls, when its max-height caps a tall sample. Deprecated as an attribute, and
-    // still the only thing that reaches a document this element does not own the head of.
-    frame.setAttribute('scrolling', 'no')
     // A demo far down a long page costs nothing until it is scrolled to. The frame
     // has no height until it loads, which is what the css min-height covers.
     frame.loading = 'lazy'
@@ -286,7 +280,7 @@ export class CodePreview extends HTMLElement {
 
     this.watchTheme()
 
-    const widths = list(this.getAttribute('viewport-widths')).map(Number).filter((width) => width > 0)
+    const widths = [...new Set(list(this.getAttribute('viewport-widths')).map(Number).filter((width) => width > 0))]
     if (widths.length) this.buildBar(widths)
 
     if (this.editable) this.attachEditor()
@@ -667,6 +661,10 @@ export class CodePreview extends HTMLElement {
   // has to escape backwards too, and outdent is its handler and not ours.
   private releaseTab = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape' || event.defaultPrevented) return
+    // Only an Escape pressed in the editor: the listener is on the host, so one pressed
+    // in the options panel or on a width button would otherwise flip the editor's Tab
+    // handling — and rewrite a hint about an editor the reader is not in.
+    if (!this.code?.contains(event.target as Node)) return
     this.jar?.updateOptions({ catchTab: false })
     // Pressing Escape is otherwise silent, and a key that appears to do nothing is a key
     // nobody presses twice. The hint is already on screen, so saying it there costs a

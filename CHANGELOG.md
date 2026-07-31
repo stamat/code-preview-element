@@ -15,6 +15,8 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-31
+
 ### Fixed
 
 - **A sample's own `<script>` stopped running after the first edit.** A js demo keeps its
@@ -83,6 +85,33 @@ shows up in a function signature.
 
   Editing the sample still rebuilds, and still costs whatever was live in there. That one
   is the sample changing, which is the point.
+
+- **An Escape pressed outside the editor released its Tab.** The listener sits on the
+  element, so an Escape in an options-panel field or on a width button also flipped the
+  editor's tab-to-indent off and rewrote the keyboard hint — about an editor the reader
+  was not in. Leaving the editor re-armed it, so no trap could result, but the hint could
+  claim a state that was no longer true. Only an Escape from inside the editor counts now.
+
+- **A failed manifest fetch was cached for the life of the page.** One transient network
+  error cost every preview sharing that url its options panel until a reload. A rejected
+  fetch is now evicted from the cache, so a preview mounting later tries again.
+
+- **An attribute `<select>` now says its default.** Its empty option reads
+  `default (quiet)` when the manifest documents one, the same way a custom property's
+  already did — it used to say only `default`, with the manifest's answer dropped.
+
+- **A duplicate width in `viewport-widths` no longer renders a duplicate button.**
+
+- **The colour swatch treats an alpha it cannot parse as unknown** — the swatch stays
+  where it was, like every other value it cannot be sure about, rather than showing the
+  colour as opaque.
+
+- **An attribute name containing a `.` is matched literally** when the options panel
+  reads or rewrites the sample, rather than as a regex wildcard.
+
+- **Publishing runs the tests.** CI runs on branches and pull requests, not on tags, so
+  the publish workflow ran none at all — a tag cut from a broken commit would have
+  published untested code. `npm test` now runs before `npm publish`.
 
 ### Added
 
@@ -284,6 +313,7 @@ Initial release.
 
 - TypeScript declarations for both builds.
 
-[Unreleased]: https://github.com/stamat/code-preview-element/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/stamat/code-preview-element/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/stamat/code-preview-element/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/stamat/code-preview-element/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/stamat/code-preview-element/releases/tag/v0.1.0

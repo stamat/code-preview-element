@@ -240,7 +240,7 @@ test('the default build highlights through the page global', () => {
 // assertion is on `defaultPrevented`, because that is exactly the difference between a
 // Tab the editor ate and a Tab the browser gets to move focus with.
 test('Escape hands Tab back, and leaving the editor takes it again', () => {
-  const element = mount('css="../../dist/lib.css"', undefined, {
+  const element = mount('css="../../dist/lib.css" viewport-widths="375"', undefined, {
     // CodeJar edits through execCommand, which jsdom has no implementation of. The
     // editing is not what is under test here; which handler ran is.
     setup: (win) => { win.document.execCommand = () => true }
@@ -278,6 +278,12 @@ test('Escape hands Tab back, and leaving the editor takes it again', () => {
   code.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }))
   assert.equal(press('Tab'), true, 'indenting never came back')
   assert.match(hint.textContent, /Press Esc/)
+
+  // An Escape pressed elsewhere in the element — a width button, a panel field — is not
+  // the editor's, and must not hand Tab back on its behalf.
+  element.querySelector('.code-preview-width')
+    .dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+  assert.equal(press('Tab'), true, 'an Escape outside the editor released Tab')
 })
 
 // The other half of demonstrating an accessible component: it has to survive being used.
@@ -354,7 +360,9 @@ test('no width switcher unless one is asked for', () => {
 })
 
 test('the width switcher drives the viewport-width attribute', () => {
-  const element = mount('viewport-widths="375 1024" no-edit')
+  // The repeated width is deliberate: a duplicate in the attribute must not become a
+  // second identical button.
+  const element = mount('viewport-widths="375 1024 375" no-edit')
   const bar = element.querySelector('.code-preview-bar')
   const buttons = [...bar.querySelectorAll('.code-preview-width')]
 
@@ -519,10 +527,12 @@ test('the swatch only ever shows a colour a picker can actually hold', () => {
   assert.equal(swatchFor('rgba(0, 0, 0, 0)', true), 'transparent')
 
   // Anything else is "leave it alone" — a wide-gamut colour, an unresolved keyword, an
-  // engine that answered with something unexpected.
+  // engine that answered with something unexpected. An alpha that did not parse is in
+  // that set too, not an opaque colour.
   assert.equal(swatchFor('color(display-p3 1 0 0)'), null)
   assert.equal(swatchFor('currentcolor'), null)
   assert.equal(swatchFor(''), null)
+  assert.equal(swatchFor('rgb(0 0 0 / garbage)'), null)
 })
 
 // The events readout. Not `JSON.stringify`: half of these carry an element, and it comes
@@ -752,7 +762,7 @@ const MANIFEST = {
       tagName: 'demo-badge',
       attributes: [
         { name: 'label', type: { text: 'string' }, default: 'Badge' },
-        { name: 'tone', type: { text: "'quiet' | 'loud'" } },
+        { name: 'tone', type: { text: "'quiet' | 'loud'" }, default: 'quiet' },
         { name: 'uppercase', type: { text: 'boolean' } }
       ],
       cssProperties: [
@@ -800,7 +810,9 @@ test('the controls are generated from the manifest, grouped by where they write'
   assert.deepEqual([...knobs[5].querySelectorAll('option')].map((o) => o.value), ['', 'normal', '600'])
 
   // The manifest's default is a placeholder and not a value: an empty control means
-  // "whatever the element does on its own", which is also what emptying it writes.
+  // "whatever the element does on its own", which is also what emptying it writes. An
+  // attribute select says its default on the empty option, as a custom property's does.
+  assert.equal(knobs[1].querySelector('option').textContent, 'default (quiet)')
   assert.equal(knobs[3].querySelector('input').placeholder, 'currentcolor')
   assert.equal(knobs[3].querySelector('input').value, '')
   // The one attribute the sample actually sets is read out of the sample, not the manifest.
