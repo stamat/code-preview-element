@@ -43,9 +43,27 @@ code-preview:not(:defined):is([viewport-widths], [manifest])::before {
    later wraps that box in a `.code-wrap` it knows nothing about — leaving the wrapper,
    and the button sitting in it, over the options panel. The class is only there once
    there is a panel to swap in, so this cannot hide a code block for good. */
-code-preview:not(:defined)[tab="options"] > :is(pre, .code-wrap),
-code-preview.is-tabbed[tab="options"] > :is(pre, .code-wrap) {
+code-preview:not(:defined)[tab="options"] > :is(pre, .code-wrap) {
   display: none;
+}
+
+/* Collapsed and clipped rather than `display: none`, so that find-in-page can still
+   search the sample nobody is looking at — the block carries `hidden="until-found"`, and
+   a browser that honours it reveals the match and the panel switches to the Code tab to
+   show it. `display: none` here would take that back, since it is the stylesheet and not
+   the attribute that does the hiding: the attribute cannot be trusted to, because a
+   browser without `until-found` support leaves an unknown `hidden` value *visible*. This
+   way the fallback is a collapsed box everywhere and searchable where it is supported. */
+code-preview.is-tabbed[tab="options"] > :is(pre, .code-wrap) {
+  block-size: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  /* The wrapper a copy-button script adds is not the box the panel put the attribute on,
+     so it does not collapse on its own — and its button is positioned inside it. */
+  overflow: hidden;
+  pointer-events: none;
 }
 
 code-preview:not(:defined)[tab="options"]::before {

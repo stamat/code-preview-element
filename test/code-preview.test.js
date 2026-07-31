@@ -450,6 +450,60 @@ test('the tab attribute is the state, whoever writes it', () => {
   assert.equal(panel.hasAttribute('hidden'), true)
 })
 
+// The pane nobody is looking at is hidden `until-found`, not plainly: the sample is the
+// main thing a reader ctrl-Fs for on a docs page, and a tab strip that put it out of reach
+// of the browser's own search would be a step back from the plain block this replaces.
+test('a hidden pane is still searchable, and finding it switches tab', () => {
+  const element = mountWithOptions('manifest="m.json" tab="options" no-edit')
+  const block = element.querySelector('pre')
+  assert.equal(block.getAttribute('hidden'), 'until-found')
+
+  block.dispatchEvent(new element.ownerDocument.defaultView.Event('beforematch', { bubbles: true }))
+  assert.equal(element.getAttribute('tab'), 'code', 'find-in-page revealed a pane the strip still called hidden')
+  assert.equal(block.hasAttribute('hidden'), false)
+})
+
+// Every other APG list in this ecosystem wraps, and a modifier held down means the key was
+// meant for the browser rather than for the strip.
+test('the arrows wrap and leave modified keys alone', () => {
+  const element = mountWithOptions()
+  const window = element.ownerDocument.defaultView
+  const tabs = [...element.querySelectorAll('[role="tab"]')]
+  const press = (key, init = {}) => {
+    tabs.find((tab) => tab.getAttribute('aria-selected') === 'true').focus()
+    element.querySelector('[role="tablist"]')
+      .dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }))
+  }
+
+  // Left from the first tab is the last one, not a dead end.
+  press('ArrowLeft')
+  assert.equal(element.getAttribute('tab'), 'options')
+  press('ArrowRight')
+  assert.equal(element.getAttribute('tab'), 'code')
+  press('End')
+  assert.equal(element.getAttribute('tab'), 'options')
+  press('Home')
+  assert.equal(element.getAttribute('tab'), 'code')
+
+  // Shift+Arrow is a selection gesture, and Ctrl/Cmd+Arrow the browser's own.
+  press('ArrowRight', { shiftKey: true })
+  assert.equal(element.getAttribute('tab'), 'code')
+  press('ArrowRight', { metaKey: true })
+  assert.equal(element.getAttribute('tab'), 'code')
+})
+
+// A docs page may already link to the block by id, and taking the anchor away to write a
+// generated one breaks a link that used to work.
+test('a code block that already has an id keeps it', () => {
+  const element = mount('manifest="m.json" no-edit', '<pre id="usage"><code class="language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>', {
+    script: `${bundled}\n${options}`,
+    setup: (window) => { window.fetch = () => new Promise(() => {}) }
+  })
+  const block = element.querySelector('pre')
+  assert.equal(block.id, 'usage')
+  assert.equal(element.querySelectorAll('[role="tab"]')[0].getAttribute('aria-controls'), 'usage')
+})
+
 test('tab="options" in the markup opens on the panel', () => {
   const element = mountWithOptions('manifest="m.json" tab="options" no-edit')
   assert.equal(element.querySelector('.code-preview-options').hasAttribute('hidden'), false)

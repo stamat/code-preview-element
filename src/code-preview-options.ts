@@ -289,6 +289,34 @@ function loadManifest(url: string): Promise<Manifest> {
 // the panel points back with `aria-labelledby`, and a docs page has many of both.
 let uid = 0
 
+// Everything that can hold focus without being given a tab stop. The same list
+// `<tabs-elemental>` uses next door, and for the same question.
+const FOCUSABLE = 'a[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]'
+
+// Show or hide one of the two panes.
+//
+// Hidden is `until-found` rather than a bare `hidden`, so find-in-page still searches the
+// pane nobody is looking at — the sample is the main thing a reader ctrl-Fs for on a docs
+// page, and a tab strip that takes it out of reach of the browser's own search would be a
+// step backwards from the plain code block this replaces. The stylesheet is what actually
+// collapses it, since a browser with no `until-found` support leaves an unknown `hidden`
+// value visible.
+//
+// The tab stop is the other half: a pane with nothing focusable in it cannot be reached by
+// keyboard, and so cannot be scrolled either. That is the APG's answer and it is only for
+// that case — an editable code block is already focusable, and so is a panel full of
+// controls, and a second stop on either would be one to Tab past for nothing.
+function showPane(pane: HTMLElement, on: boolean): void {
+  if (!on) {
+    pane.setAttribute('hidden', 'until-found')
+    pane.removeAttribute('tabindex')
+    return
+  }
+  pane.removeAttribute('hidden')
+  if (pane.querySelector(FOCUSABLE)) pane.removeAttribute('tabindex')
+  else pane.tabIndex = 0
+}
+
 // Built once per element, and only ever from `buildOptions`.
 const panelled = new WeakSet<CodePreview>()
 
@@ -305,13 +333,12 @@ export function buildOptions(host: CodePreview): void {
 
   const id = `code-preview-${++uid}`
 
-  // The code block becomes a tabpanel in place. It is only focusable in its own right
-  // once CodeJar has taken it over, so a read-only one is given a tab stop — a tabpanel
-  // whose content cannot be reached by keyboard is a panel a keyboard reader cannot read.
-  codePanel.id = `${id}-code`
+  // The code block becomes a tabpanel in place. Its own id is kept if it has one: a docs
+  // page may already be linking to that block, and taking the anchor away to write a
+  // generated one breaks a link that used to work.
+  if (!codePanel.id) codePanel.id = `${id}-code`
   codePanel.setAttribute('role', 'tabpanel')
   codePanel.setAttribute('aria-labelledby', `${id}-code-tab`)
-  if (host.hasAttribute('no-edit')) codePanel.tabIndex = 0
 
   const panel = document.createElement('div')
   panel.className = 'code-preview-options'
@@ -320,15 +347,24 @@ export function buildOptions(host: CodePreview): void {
   panel.setAttribute('aria-labelledby', `${id}-options-tab`)
   host.appendChild(panel)
 
+  // Find-in-page reveals a pane hidden `until-found` on its own; this is how the tab strip
+  // hears about it and stops disagreeing with it. The reader searched for a line of the
+  // sample, so the sample is what they get, on the tab that holds it.
+  codePanel.addEventListener('beforematch', () => host.setAttribute('tab', 'code'))
+  panel.addEventListener('beforematch', () => host.setAttribute('tab', 'options'))
+
   // Real APG tabs, unlike the width buttons — those deliberately stayed plain buttons
   // with `aria-pressed`, because they switch no panels and the richer role would oblige
   // arrow-key handling they do not need to be usable. These do switch panels.
   const tablist = document.createElement('div')
   tablist.className = 'code-preview-tabs'
   tablist.setAttribute('role', 'tablist')
-  tablist.setAttribute('aria-label', 'Sample')
+  tablist.setAttribute('aria-label', 'Code and options')
 
-  const tabFor = (name: string, label: string): HTMLButtonElement => {
+  // `controls` is passed rather than derived: the code block may have arrived with an id
+  // of its own, which it keeps, and a tab pointing at the id it would have been given
+  // points at nothing at all.
+  const tabFor = (name: string, label: string, controls: HTMLElement): HTMLButtonElement => {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'code-preview-tab'
@@ -336,34 +372,35 @@ export function buildOptions(host: CodePreview): void {
     button.textContent = label
     button.dataset.tab = name
     button.setAttribute('role', 'tab')
-    button.setAttribute('aria-controls', `${id}-${name}`)
+    button.setAttribute('aria-controls', controls.id)
     // The attribute is the state, exactly as `viewport-width` is: a click, a script and
     // hand-written markup all arrive at the same place.
     button.addEventListener('click', () => host.setAttribute('tab', name))
     return button
   }
 
-  const tabs = [tabFor('code', 'Code'), tabFor('options', 'Options')]
+  const tabs = [tabFor('code', 'Code', codePanel), tabFor('options', 'Options', panel)]
   for (const tab of tabs) tablist.appendChild(tab)
   // Prepended, so the tabs sit at the start of the bar whether or not `viewport-widths`
   // has already put its buttons in it.
   host.toolbar.prepend(tablist)
 
-  // Automatic activation, which is the APG default for a tab list this small. No
-  // wrapping at the ends: two tabs, and stopping is the less surprising of the two.
+  // Automatic activation, which is what the APG asks for wherever showing a panel costs
+  // nothing — both of these are already in the page. Arrows wrap, as they do in every
+  // other APG list, and a modifier held down means the key was meant for the browser.
   tablist.addEventListener('keydown', (event) => {
     const from = tabs.indexOf(document.activeElement as HTMLButtonElement)
-    if (from < 0) return
+    if (from < 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
     const to = event.key === 'ArrowLeft'
-      ? from - 1
+      ? (from + tabs.length - 1) % tabs.length
       : event.key === 'ArrowRight'
-        ? from + 1
+        ? (from + 1) % tabs.length
         : event.key === 'Home'
           ? 0
           : event.key === 'End'
             ? tabs.length - 1
             : -1
-    if (to < 0 || to >= tabs.length) return
+    if (to < 0) return
     event.preventDefault()
     tabs[to].focus()
     tabs[to].click()
@@ -382,8 +419,8 @@ export function buildOptions(host: CodePreview): void {
       // Roving tabindex: one tab stop for the whole list, arrows move within it.
       tab.tabIndex = selected ? 0 : -1
     }
-    panel.hidden = !options
-    codePanel.hidden = options
+    showPane(panel, options)
+    showPane(codePanel, !options)
     if (options) refresh()
   }
 
