@@ -7,11 +7,14 @@ short list of things that are hard to notice are missing once a change is alread
 
 ```
 npm install
-npm run dev        # site/ on :4040, live reload
-npm run build      # dist/ + _site/
-npm run lint       # eslint (--fix fixes nearly all of it)
-npm test           # lint + typecheck + node --test
+script/server      # site/ on :4040, live reload
+script/build       # dist/ + _site/
+script/lint        # eslint (--fix fixes nearly all of it)
+script/test        # lint + typecheck + node --test
 ```
+
+Each of those is a one-line wrapper over the matching `npm run` script, so either spelling
+works — the point is that every repo here starts the same four ways.
 
 `npm test` is what CI runs, and it is `eslint .` then `tsc --noEmit` then `node --test`. The lint
 config is [neostandard](https://github.com/neostandard/neostandard) with one rule changed, so it
@@ -65,3 +68,11 @@ taste:
 Small and focused beats large and complete. Branch off `main`, make sure `npm test` and
 `npm run build` both pass, and describe what changed and why — the why is the part review
 cannot reconstruct.
+
+## How a release works
+
+`script/publish [version]` bumps `package.json`, runs `script/changelog` to cut `[Unreleased]`
+into a released entry, tags and pushes, and offers to open a GitHub release with that entry as
+the body. Pushing the tag is what publishes: [publish.yml](.github/workflows/publish.yml) runs
+`npm test` and then `npm publish` over npm trusted publishing, and `dist/` is built by the
+`prepack` script rather than committed.

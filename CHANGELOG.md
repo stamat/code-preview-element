@@ -6,14 +6,71 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 **How to use it:** land changes under `## [Unreleased]`, grouped under _Added_, _Changed_,
-_Deprecated_, _Removed_, _Fixed_ or _Security_. Releasing means renaming that heading to the
-version and date, running `npm version`, and starting a fresh `[Unreleased]`. Write entries for
+_Deprecated_, _Removed_, _Fixed_ or _Security_. Releasing is `script/publish` — it renames that
+heading to the version and date, starts a fresh `[Unreleased]`, and uses the entry it cut as the
+GitHub release body, so what you write here is what the release says. Write entries for
 the person upgrading, not for the person who wrote the code — and because this is a custom
 element, call out anything that changes the **DOM the element produces**, the **CSS an author
 may already be targeting**, or the **contents of the preview iframe**, since none of the three
 shows up in a function signature.
 
 ## [Unreleased]
+
+### Added
+
+- **A sample can be several fences — markup, its css, its js — and each becomes a tab.**
+  Until now the element took one `<pre><code>`, so a demo that needed a stylesheet or a
+  script had to bury both inside the html as `<style>` and `<script>`: unreadable as a
+  sample, uneditable as css, and impossible to copy the interesting half out of. Write
+  them as the separate blocks they are and the element pairs them up:
+
+  ```html
+  <code-preview css="dist/lib.css" js="dist/lib.js">
+    <pre><code class="language-html">&lt;aside class="drawer"&gt;…&lt;/aside&gt;</code></pre>
+    <pre><code class="language-css">.drawer { transition: transform 0.2s; }</code></pre>
+    <pre><code class="language-js">document.querySelector(".drawer");</code></pre>
+  </code-preview>
+  ```
+
+  The languages are read off the `language-*` class a site generator already writes, so
+  there is no new markup vocabulary — three fences in the markdown, three tabs on the page.
+  Anything the frame cannot run (a `scss` block beside the css it compiles to) still gets a
+  tab, read-only.
+
+  **The js pane is inlined as `<script type="module">`**, and that is not about scoping. A
+  classic inline script runs while the parser is still going, before the deferred bundles
+  in `js` have defined anything — so a sample that writes a property on a custom element
+  gets one that has not upgraded, and the write installs an own property that shadows the
+  accessor the class is about to bring. It fails silently and for good. A module is
+  deferred, and deferred scripts run in document order, so the pane runs after every url in
+  `js`.
+
+  **A css edit no longer reloads the frame.** The pane is one `<style>` in a head this
+  element built, so an edit is a write to its text: nothing reparses, and the sample keeps
+  the state a rebuild would cost it — a script's variables, an open menu, the control the
+  reader had focused. Markup edits patch or reload exactly as before, and a js pane always
+  reloads, for the reason `js` urls always have.
+
+  **DOM it produces:** each pane's box gets `role="tabpanel"`, `data-pane="<name>"` and
+  `hidden="until-found"` while it is not showing; the strip is a `role="tablist"` of
+  `.code-preview-tab` buttons in the existing `.code-preview-bar`. The markup pane is named
+  `code`, not `html` — so `tab="code"` still means the sample, and every page already using
+  this element is untouched. **One fence still produces exactly what it did:** no strip, no
+  `role`, no `hidden`, byte for byte.
+
+  **CSS an author may be targeting:** the rule that collapsed the hidden pane was
+  `code-preview.is-tabbed[tab="options"] > :is(pre, .code-wrap)` and is now keyed off
+  `[data-pane][hidden]`, which is one rule for two panes or for five. The editor's keyboard
+  hint is hidden by `code-preview.is-tabbed:not(.is-code-pane)` rather than by naming the
+  options tab.
+
+### Changed
+
+- **The tab strip moved from the options bundle into the element.** It was built by
+  `code-preview-options.js`, which could only ever know about two panes. `addPane()` is the
+  contract now, and the options panel is one caller of it — so the roving tabindex, the
+  APG arrow keys, the `beforematch` handling and the focus rescue are written once and are
+  the same for two panes or five. No markup changes; the options panel behaves as it did.
 
 ## [1.0.0] - 2026-07-31
 

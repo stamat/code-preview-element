@@ -15,6 +15,7 @@ demonstrated by the element.
 - [Responsive samples](#responsive-samples)
 - [Wiring it up](#wiring-it-up)
 - [Editing](#editing)
+- [Several fences, several tabs](#several-fences-several-tabs)
 - [The options panel](#the-options-panel) — [Where a knob writes](#where-a-knob-writes), [Controls](#controls)
 - [Three builds](#three-builds)
 - [From JavaScript](#from-javascript)
@@ -133,7 +134,7 @@ Reach for something else when the shape of the problem is different:
 | `viewport-widths` | whitespace-separated widths to offer as buttons                                   |
 | `manifest`        | url of a `custom-elements.json` — its presence turns the options panel on         |
 | `manifest-tag`    | which declaration in it to drive. Default: the first declared tag the sample uses |
-| `tab`             | `code` (default) or `options` — which pane is open, and the live state            |
+| `tab`             | which pane is open, and the live state: `code` (default), `css`, `js`, `options`  |
 | `no-edit`         | render the preview, leave the code read-only                                      |
 | `no-toast`        | no event name over the preview — the panel still counts what fires                |
 | `no-shrink`       | never size the preview below its tallest measurement                              |
@@ -277,10 +278,50 @@ first time it is focused.
 
 Edits apply on a debounce with no Run button — 250ms when the frame can be patched,
 600ms when it has to reload. Patching keeps stylesheets loaded and the scroll
-position; a reload is forced by `js` assets, the `reload` attribute, an inline
-`<script>` in the sample, or a sample that is a whole document. All of those are the
-same trap from different ends: `innerHTML` never executes scripts it inserts, and a
+position; a reload is forced by `js` assets, a js pane, the `reload` attribute, an
+inline `<script>` in the sample, or a sample that is a whole document. All of those are
+the same trap from different ends: `innerHTML` never executes scripts it inserts, and a
 script that already ran does not re-run against markup replacing what it initialised.
+
+An edit to the [css pane](#several-fences-several-tabs) is neither: the pane is one
+`<style>` in a head this element built, so it is a write to that element's text. Nothing
+reloads and nothing reparses, which means the sample keeps everything a rebuild would
+cost it — a script's variables, an open menu, the control that had focus.
+
+## Several fences, several tabs
+
+A sample that needs a stylesheet or a script is written as the separate blocks it is,
+and each one becomes a tab:
+
+```html
+<code-preview css="dist/lib.css" js="dist/lib.js">
+  <pre><code class="language-html">&lt;aside class="drawer"&gt;…&lt;/aside&gt;</code></pre>
+  <pre><code class="language-css">.drawer { transition: transform 0.2s; }</code></pre>
+  <pre><code class="language-js">document.querySelector(".drawer");</code></pre>
+</code-preview>
+```
+
+There is nothing to configure. The language comes off the `language-*` class your site
+generator already writes on the block, `html` is the sample, `css` goes in the frame's
+head and `js` at the end of its body. A block in anything else — `scss` beside the css
+it compiles to, a `json` config the sample reads — still gets a tab, read-only, because
+there is nothing in the frame to type it into.
+
+| Pane   | Tab    | Where it lands                                        |
+| ------ | ------ | ----------------------------------------------------- |
+| `html` | `HTML` | the frame's `<body>`                                   |
+| `css`  | `CSS`  | `<style>` last in `<head>`, so it wins over `css` urls |
+| `js`   | `JS`   | `<script type="module">` last in `<body>`              |
+
+The js pane is a module, and that is not about scoping. A classic inline script runs
+while the parser is still going — before the deferred bundles from `js` have defined
+anything — so a sample that writes a property on a custom element gets one that has not
+upgraded yet, and the write installs an own property that shadows the accessor the class
+is about to bring. It fails silently and permanently. Modules are deferred and deferred
+scripts run in document order, so the pane runs after every url in `js`.
+
+One fence is still one code block: no tab strip, no roles, nothing hidden. The markup
+pane is named `code` rather than `html`, so `tab="code"` keeps meaning the sample.
 
 ## The options panel
 
@@ -456,12 +497,13 @@ And per instance, the surface the panel drives:
 
 | Member               |                                                                               |
 | -------------------- | ----------------------------------------------------------------------------- |
-| `source`             | the sample's text. Assigning it retypes the block and re-renders              |
-| `frameDocument`      | the frame's document, once it holds one of ours — `undefined` until           |
-| `setFrameStyle(css)` | one stylesheet appended last in the frame's head                              |
-| `toolbar`            | the bar above the preview, created on first read                              |
-| `codePanel`          | the element's own child that holds the code block                             |
-| `onPanelSync`        | assign a callback: "re-read what you are showing", on `tab` and on frame load |
+| `source`                        | the markup pane's text. Assigning it retypes the block and re-renders         |
+| `frameDocument`                 | the frame's document, once it holds one of ours — `undefined` until           |
+| `setFrameStyle(css)`            | one stylesheet appended last in the frame's head                              |
+| `toolbar`                       | the bar above the preview, created on first read                              |
+| `codePanel`                     | the element's own child that holds the markup pane's block                    |
+| `addPane(name, panel[, code, language])` | register a pane and its tab. The options bundle is one caller       |
+| `onPanelSync`                   | assign a callback: "re-read what you are showing", on `tab` and on frame load |
 
 ```js
 import { CodePreview } from "code-preview-element";
