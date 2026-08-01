@@ -67,6 +67,29 @@ shows up in a function signature.
   hint is hidden by `code-preview.is-tabbed:not(.is-code-pane)` rather than by naming the
   options tab.
 
+- **`no-edit` can lock some panes and not others.** It was all-or-nothing, which for a
+  three-fence sample meant choosing between an editable stylesheet you did not want touched
+  and no editing at all. Two ways to say it, and they add up:
+
+  ```html
+  <code-preview no-edit="css js">…</code-preview>
+  ```
+
+  ```html
+  <pre no-edit><code class="language-css">.drawer { transition: transform 0.2s; }</code></pre>
+  ```
+
+  Panes are named by what their tab says (`html`, `css`, `js`) or by the pane's own name
+  (`code` for the markup one). In markdown the per-fence form needs no new vocabulary if
+  your generator turns a bare word in the info string into a class on the block — ```` ```css
+  no-edit ```` — since that class is what the element reads. Bare `no-edit` is unchanged:
+  the whole sample stays read-only.
+
+  **CSS an author may be targeting:** `code-preview.is-code-pane` now means the pane
+  showing has an *editor* in it, not merely code — a pane locked by either form no longer
+  gets the class, so the keyboard hint is not left describing a block nobody can type into.
+  Unchanged for a sample that locks nothing.
+
 ### Changed
 
 - **The tab strip moved from the options bundle into the element.** It was built by

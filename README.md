@@ -135,7 +135,7 @@ Reach for something else when the shape of the problem is different:
 | `manifest`        | url of a `custom-elements.json` — its presence turns the options panel on         |
 | `manifest-tag`    | which declaration in it to drive. Default: the first declared tag the sample uses |
 | `tab`             | which pane is open, and the live state: `code` (default), `css`, `js`, `options`  |
-| `no-edit`         | render the preview, leave the code read-only                                      |
+| `no-edit`         | leave the code read-only — all of it, or only the panes it names                  |
 | `no-toast`        | no event name over the preview — the panel still counts what fires                |
 | `no-shrink`       | never size the preview below its tallest measurement                              |
 | `reload`          | always rebuild the frame on edit, never patch it                                  |
@@ -327,6 +327,34 @@ Two more panes are read-only for the same nowhere-to-type reason: any fence besi
 sample that is a whole document — it owns its head and body, so the element has no place
 in it to write a stylesheet or a script — and a second fence in a language that already
 has a pane, which gets a numbered tab (`CSS2`) while the frame is built from the first.
+
+### Locking a pane
+
+`no-edit` on its own is the whole sample; given panes to name it locks only those, so a
+demo whose markup is the point can keep its stylesheet and script as context to read:
+
+```html
+<code-preview no-edit="css js">…</code-preview>
+```
+
+Name a pane by what its tab says (`html`, `css`, `js`) or by the pane's own name (`code`
+for the markup one, as everywhere else). Panes left out stay editable.
+
+A single fence can also say it itself, with `no-edit` on the block or on the `<pre>`
+around it:
+
+```html
+<pre no-edit><code class="language-css">.drawer { transition: transform 0.2s; }</code></pre>
+```
+
+In markdown that needs no new vocabulary if your generator turns a bare word in the info
+string into a class on the block — which is what the class this reads is:
+
+````md
+```css no-edit
+.drawer { transition: transform 0.2s; }
+```
+````
 
 ## The options panel
 

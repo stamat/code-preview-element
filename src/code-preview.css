@@ -314,10 +314,12 @@ code-preview .code-preview-hint {
   pointer-events: none;
 }
 
-/* `.is-key-focus` is the element saying focus arrived by keyboard — a pointer user can
-   click back out and does not need advice about Tab. Not `:focus-visible`, which a
-   contenteditable matches on a mouse click too. `:focus-within` stays alongside it as the
-   half that cannot go stale: the class is only ever removed by a `focusout`. */
+/* `.is-key-focus` is the element saying a Tab is what got focus here, or what has since
+   been pressed in here — advice about one key, shown to whoever presses it. A pointer
+   user can click back out, and someone typing has not hit the trap yet. Not
+   `:focus-visible`, which a contenteditable matches on a mouse click too. `:focus-within`
+   stays alongside it as the half that cannot go stale: the class is only ever removed by
+   a `focusout`. */
 code-preview.is-key-focus:has(pre:focus-within) > .code-preview-hint {
   visibility: visible;
 }

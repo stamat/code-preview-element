@@ -49,7 +49,10 @@
 //                    one documented element in it
 //   tab              `code` (default) or `options` — which panel is open, held the
 //                    same way `viewport-width` is: the attribute is the state
-//   no-edit          render the preview, leave the code read-only
+//   no-edit          render the preview, leave the code read-only. With a value, only the
+//                    panes it names — `no-edit="css js"`, by tab name or fence language.
+//                    A single fence can also say it itself, as `no-edit` on the block or
+//                    as a bare token in a markdown fence's info string
 //   no-toast         no name over the preview when the sample fires a documented event —
 //                    for one that fires on every pointermove. The panel still counts it
 //   no-shrink        let the preview grow to its tallest measurement and stay there,
@@ -99,9 +102,10 @@ let uid = 0
 const TAB_CAUGHT = 'Press Esc, then Tab, to leave the editor'
 const TAB_FREE = 'Tab now leaves the editor'
 
-// Which way focus is arriving. The hint is advice about a key, so it is for someone who
-// got there with keys — a pointer user can click straight back out of the editor and
-// does not need a line of text appearing under every sample they click into.
+// Whether focus is arriving on a Tab. The hint is advice about one key, so it is for
+// someone who has pressed that key — a pointer user can click straight back out of the
+// editor, and someone typing in there has not hit the trap yet either. Any other key
+// clears it for the same reason a pointerdown does: the next focus move is not a Tab.
 //
 // Tracked rather than read off `:focus-visible`: a contenteditable matches that
 // pseudo-class on a mouse click too, because a ua assumes anything taking text input
@@ -111,13 +115,13 @@ const TAB_FREE = 'Tab now leaves the editor'
 // lands on whatever had focus before it — which is not this element. Per document, so a
 // sample inside an iframe is watched too, and a `WeakSet` so twenty editors on a page
 // still add one pair of listeners each.
-let keyboardIntent = false
+let tabIntent = false
 const watched = new WeakSet<Document>()
 function watchIntent(doc: Document): void {
   if (watched.has(doc)) return
   watched.add(doc)
-  doc.addEventListener('keydown', () => { keyboardIntent = true }, true)
-  doc.addEventListener('pointerdown', () => { keyboardIntent = false }, true)
+  doc.addEventListener('keydown', (event) => { tabIntent = event.key === 'Tab' }, true)
+  doc.addEventListener('pointerdown', () => { tabIntent = false }, true)
 }
 
 const list = (value: string | null): string[] => (value ?? '').split(/\s+/).filter(Boolean)
@@ -253,6 +257,10 @@ interface Pane {
   code?: HTMLElement
   language?: string
   jar?: ReturnType<typeof CodeJar>
+  // What the fence said about itself, read once when the pane is registered rather than
+  // off the block on demand: a highlighter rewrites `className` wholesale — hljs does —
+  // so a `no-edit` written as a class is gone by the second time anyone asks.
+  locked?: boolean
 }
 
 // The three texts a frame is built out of. Compared as a whole to decide what an edit
@@ -471,7 +479,13 @@ export class CodePreview extends HTMLElement {
     // hand-written markup all arrive at the same place.
     tab.addEventListener('click', () => this.setAttribute('tab', name))
 
-    this.panes.set(name, { name, panel, tab, code, language })
+    // `no-edit` on the fence itself, which is the shorter thing to write when the fences
+    // are the markup. As a class because that is what a bare token in a markdown fence's
+    // info string already becomes — ```` ```css no-edit ```` — and as an attribute for
+    // markup written by hand, on the block or on the `<pre>` around it.
+    const locked = !!code && (code.matches('.no-edit, [no-edit]') || panel.matches('[no-edit]'))
+
+    this.panes.set(name, { name, panel, tab, code, language, locked })
     this.buildTablist()
     this.syncPanes()
   }
@@ -562,10 +576,14 @@ export class CodePreview extends HTMLElement {
       showPane(pane.panel, on)
     }
 
-    // Whether what is showing is a code block or the options panel. The stylesheet needs
-    // the answer for the editor's keyboard hint — which describes an editor, and so has no
-    // business being on screen on a tab that has none — and only this side knows it.
-    this.classList.toggle('is-code-pane', !!this.panes.get(current)?.code)
+    // Whether what is showing is an *editable* code block. The stylesheet needs the answer
+    // for the editor's keyboard hint — which describes an editor, and so has no business
+    // being on screen on a tab that has none — and only this side knows it. An editor and
+    // not merely `code`, because a pane `no-edit` names has no more editor in it than the
+    // options panel does, and the hint is a live region: left on, it announces Tab advice
+    // about a block the reader cannot type into.
+    const showing = this.panes.get(current)
+    this.classList.toggle('is-code-pane', !!showing && this.editable(showing))
   }
 
   // Automatic activation, which is what the APG asks for wherever showing a panel costs
@@ -972,7 +990,19 @@ export class CodePreview extends HTMLElement {
   // Asked twice — building the element, and again if it is moved in the dom, which
   // tears the editors down and has to put them back.
   private editable(pane: Pane): boolean {
-    if (this.hasAttribute('no-edit') || !pane.code || !EDITABLE.test(pane.language ?? '')) return false
+    if (!pane.code || !EDITABLE.test(pane.language ?? '')) return false
+    // Bare `no-edit` is what it always was: nothing here takes a keystroke. Given panes to
+    // name — `no-edit="css js"` — it locks those and leaves the rest editable, which is the
+    // sample whose markup is the point and whose stylesheet is context. A pane is named by
+    // the tab's own name or by the fence's language, since `HTML` is what the tab says and
+    // `code` is only the internal name for it.
+    const locked = this.getAttribute('no-edit')
+    if (locked !== null) {
+      const names = list(locked.toLowerCase()).map((name) => PANE_OF[name] ?? name)
+      if (!names.length || names.includes(pane.name)) return false
+    }
+    // Or the fence said so itself; see `addPane` for what it can have said.
+    if (pane.locked) return false
     // Only the pane the frame is built from: a second fence in the same language has a
     // tab under a numbered name, but `sources` reads the first — an editor on the second
     // would take keystrokes and render none of them.
@@ -1044,10 +1074,10 @@ export class CodePreview extends HTMLElement {
     // and rewrite a hint about an editor the reader is not in.
     const pane = this.paneAt(event.target)
     if (!pane) return
-    // Clicked in, then started typing: someone who arrived by pointer is a keyboard user
-    // now, and the next Tab indents on them like everyone else's. Late is the right time
-    // for the hint to turn up; never is not.
-    this.classList.add('is-key-focus')
+    // Clicked in, then pressed Tab: the indent that just happened instead of a focus move
+    // is the trap itself, and that is the moment the advice is about. Late is the right
+    // time for the hint to turn up; never is not — and every other key is not the trap.
+    if (event.key === 'Tab') this.classList.add('is-key-focus')
     if (event.key !== 'Escape' || event.defaultPrevented) return
     pane.jar?.updateOptions({ catchTab: false })
     // Pressing Escape is otherwise silent, and a key that appears to do nothing is a key
@@ -1056,12 +1086,12 @@ export class CodePreview extends HTMLElement {
     if (this.hint) this.hint.textContent = TAB_FREE
   }
 
-  // The visible half of the hint, gated on how focus got here. The `aria-describedby` is
-  // not gated with it: a screen reader is a keyboard, and the description is read on
-  // arrival either way.
+  // The visible half of the hint, gated on how focus got here — a Tab, and nothing else.
+  // The `aria-describedby` is not gated with it: a screen reader is a keyboard, and the
+  // description is read on arrival either way.
   private showHint = (event: FocusEvent): void => {
     if (!this.paneAt(event.target)) return
-    this.classList.toggle('is-key-focus', keyboardIntent)
+    this.classList.toggle('is-key-focus', tabIntent)
   }
 
   // Focus leaving anything in the element, which is a superset of focus leaving an

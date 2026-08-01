@@ -269,23 +269,28 @@ test('Escape hands Tab back, and leaving the editor takes it again', () => {
     return event.defaultPrevented
   }
 
-  // The hint is advice about a key, so it is for whoever arrived on keys. A pointer user
-  // can click straight back out and does not need a sentence under every sample they
-  // click into — but the moment they touch the keyboard they are in the same trap, so it
-  // has to turn up late rather than not at all.
-  const arrive = (kind) => {
-    win.document.dispatchEvent(kind === 'key'
-      ? new win.KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
+  // The hint is advice about one key, so it is for whoever presses that key. A pointer
+  // user can click straight back out and does not need a sentence under every sample they
+  // click into, and nor does someone typing in there — but the moment either of them
+  // presses Tab they are in the trap, so it has to turn up late rather than not at all.
+  const arrive = (key) => {
+    win.document.dispatchEvent(key
+      ? new win.KeyboardEvent('keydown', { key, bubbles: true })
       : new win.Event('pointerdown', { bubbles: true }))
     code.dispatchEvent(new win.FocusEvent('focusin', { bubbles: true }))
   }
-  arrive('key')
+  arrive('Tab')
   assert.ok(element.classList.contains('is-key-focus'), 'tabbing into the editor showed no hint')
   code.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }))
-  arrive('pointer')
+  arrive('ArrowDown')
+  assert.equal(element.classList.contains('is-key-focus'), false, 'arrowing into the editor showed a hint about Tab')
+  code.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }))
+  arrive(null)
   assert.equal(element.classList.contains('is-key-focus'), false, 'clicking into the editor showed the hint anyway')
   press('a')
-  assert.ok(element.classList.contains('is-key-focus'), 'typing after a click never brought the hint back')
+  assert.equal(element.classList.contains('is-key-focus'), false, 'typing showed a hint about a key nobody pressed')
+  press('Tab')
+  assert.ok(element.classList.contains('is-key-focus'), 'Tab after a click never brought the hint up')
 
   assert.equal(press('Tab'), true, 'Tab stopped indenting')
   press('Escape')
@@ -1156,4 +1161,55 @@ test('every pane the frame can run gets an editor, and the rest stay read-only',
   // A language the frame cannot run is still worth showing beside the sample — it is
   // just not something there is anywhere to type into.
   assert.equal([...element.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent).at(-1), 'SCSS')
+})
+
+// Bare `no-edit` is covered above, where it is what keeps the block plain. This is the
+// half with a value in it: named panes locked, the rest editable, by tab name or by the
+// fence's own language — `html` is what the tab says, `code` is only the internal name.
+test('no-edit with panes named locks those and leaves the rest editable', () => {
+  const named = mount('no-edit="css js"', `
+    <pre><code class="hljs language-html">&lt;p&gt;hi&lt;/p&gt;</code></pre>
+    <pre><code class="hljs language-css">.a { color: red }</code></pre>
+    <pre><code class="hljs language-js">console.log(1)</code></pre>
+  `)
+  assert.deepEqual(
+    [...named.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable')),
+    ['true', null, null])
+
+  const byLanguage = mount('no-edit="HTML"', `
+    <pre><code class="hljs language-html">&lt;p&gt;hi&lt;/p&gt;</code></pre>
+    <pre><code class="hljs language-css">.a { color: red }</code></pre>
+  `)
+  assert.deepEqual(
+    [...byLanguage.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable')),
+    [null, 'true'])
+
+  // The hint is a live region describing an editor; a locked pane showing must not leave
+  // it announcing Tab advice about a block nobody can type into.
+  byLanguage.setAttribute('tab', 'code')
+  assert.equal(byLanguage.classList.contains('is-code-pane'), false)
+  byLanguage.setAttribute('tab', 'css')
+  assert.equal(byLanguage.classList.contains('is-code-pane'), true)
+})
+
+// The per-fence half: a bare token in a markdown fence's info string arrives as a class on
+// the block, so `no-edit` needs no vocabulary the generator does not already have. Read
+// once when the pane is registered, because hljs rewrites `className` wholesale — asked a
+// second time off the block, the class is gone and the pane would go editable behind it.
+test('a fence can lock itself, as a class or an attribute, and highlighting cannot undo it', () => {
+  const element = mount('', `
+    <pre><code class="hljs language-html">&lt;p&gt;hi&lt;/p&gt;</code></pre>
+    <pre><code class="language-css no-edit">.a { color: red }</code></pre>
+    <pre no-edit><code class="hljs language-js">console.log(1)</code></pre>
+  `)
+  assert.deepEqual(
+    [...element.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable')),
+    ['true', null, null])
+
+  // The css block arrived plain, so the element highlighted it — which drops every class
+  // hljs did not write, `no-edit` included.
+  const css = element.querySelectorAll('code')[1]
+  assert.equal(css.classList.contains('no-edit'), false, 'the fixture stopped exercising the highlighter')
+  element.setAttribute('tab', 'css')
+  assert.equal(element.classList.contains('is-code-pane'), false, 'a locked pane claimed to hold an editor')
 })

@@ -2,6 +2,7 @@
 layout: poops-docs-theme/prose
 description: Live, editable HTML samples in an isolated iframe — the element demonstrated by the element.
 ---
+
 <link rel="stylesheet" href="code-preview.min.css">
 {# The page is the docs theme's `prose` layout: topbar, one article, its own tokens and
    its own highlight.js colors. Which makes it the honest test — the element's stylesheet
@@ -178,9 +179,18 @@ watch it fall back on its own.
 
 ```html
 <div class="cols">
-  <div class="card"><h3>One</h3><p>Three across above 900px.</p></div>
-  <div class="card"><h3>Two</h3><p>Two across above 600px.</p></div>
-  <div class="card"><h3>Three</h3><p>Stacked below that.</p></div>
+  <div class="card">
+    <h3>One</h3>
+    <p>Three across above 900px.</p>
+  </div>
+  <div class="card">
+    <h3>Two</h3>
+    <p>Two across above 600px.</p>
+  </div>
+  <div class="card">
+    <h3>Three</h3>
+    <p>Stacked below that.</p>
+  </div>
 </div>
 ```
 
@@ -197,8 +207,8 @@ Inline `<script>` means every edit rebuilds the frame rather than patching it �
 <button id="go">Click me</button>
 <p id="out"></p>
 <script>
-  let n = 0
-  go.onclick = () => out.textContent = `clicked ${++n}`
+  let n = 0;
+  go.onclick = () => (out.textContent = `clicked ${++n}`);
 </script>
 ```
 
@@ -220,12 +230,14 @@ CSS tab and watch the count survive.
 ```
 
 ```css
-button { padding: 0.4rem 1rem; }
+button {
+  padding: 0.4rem 1rem;
+}
 ```
 
 ```js
-let n = 0
-go.onclick = () => out.textContent = `clicked ${++n}`
+let n = 0;
+go.onclick = () => (out.textContent = `clicked ${++n}`);
 ```
 
 </code-preview>
@@ -238,6 +250,50 @@ go.onclick = () => out.textContent = `clicked ${++n}`
 
 ```html
 <p>You cannot type in this one.</p>
+```
+
+</code-preview>
+
+Give it panes to name and it locks only those: `no-edit="css js"` keeps the markup
+editable and turns its stylesheet and script into what they are here — context to read,
+not knobs to turn. Name a pane by what its tab says (`html`, `css`, `js`) or by the tab's
+own name (`code` for the markup one); the tabs you leave out stay editable.
+
+A fence can also say it itself, which is usually the shorter thing to write, and it does
+not need a new markdown vocabulary — a bare word after the language is already a class on
+the block, and `no-edit` is the class this reads:
+
+````md
+```css no-edit
+.pill {
+  border-radius: 999px;
+}
+```
+````
+
+In hand-written markup it is an attribute instead, on the block or on the `<pre>` around
+it: `<pre no-edit><code class="language-css">…</code></pre>`.
+
+Both at once, below: the css pane locks itself from its fence, the js pane is locked by
+name on the element.
+
+<code-preview no-edit="js" style="--code-preview-height: 70px">
+
+```html
+<button class="pill">Type in me</button>
+```
+
+```css no-edit
+.pill {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+}
+```
+
+```js
+document.querySelector(".pill").onclick = (event) =>
+  (event.target.textContent = "Read-only css");
 ```
 
 </code-preview>
