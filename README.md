@@ -1,9 +1,9 @@
 # 🪟 code-preview-element [![npm version](https://img.shields.io/npm/v/code-preview-element)](https://www.npmjs.com/package/code-preview-element) [![ci](https://img.shields.io/github/actions/workflow/status/stamat/code-preview-element/ci.yml?branch=main&label=ci)](https://github.com/stamat/code-preview-element/actions/workflows/ci.yml) [![license mit](https://img.shields.io/badge/license-MIT-green)](https://github.com/stamat/code-preview-element/blob/main/LICENSE)
 
 A code block that renders itself. `<code-preview>` wraps a highlighted
-`<pre><code>` in a live preview: an iframe above the code, the code editable, edits
-applied as you type. The sample is the only source of truth, so a documented example
-and what it actually does cannot drift.
+`<pre><code>` in a live preview: an iframe above the code, the code editable on
+request, edits applied as you type. The sample is the only source of truth, so a
+documented example and what it actually does cannot drift.
 
 **[Live demo →](https://stamat.github.io/code-preview-element/)** — the element,
 demonstrated by the element.
@@ -14,7 +14,7 @@ demonstrated by the element.
 - [Attributes](#attributes)
 - [Responsive samples](#responsive-samples)
 - [Wiring it up](#wiring-it-up)
-- [Editing](#editing)
+- [Editing](#editing) — [Editing is asked for](#editing-is-asked-for-not-assumed), [The two buttons](#the-two-buttons)
 - [Several fences, several tabs](#several-fences-several-tabs)
 - [The options panel](#the-options-panel) — [Where a knob writes](#where-a-knob-writes), [Controls](#controls)
 - [Three builds](#three-builds)
@@ -43,8 +43,9 @@ A stylesheet and a script, and any `<pre><code>` you wrap is live:
 </code-preview>
 ```
 
-That build is 11KB and brings no highlighter, because it expects the page to already
-have one — a docs site loading a second copy of highlight.js is 42KB spent on nothing.
+That build is 7.5KB gzipped and brings no highlighter, because it expects the page to
+already have one — a docs site loading a second copy of highlight.js is 15KB spent on
+nothing.
 If yours has none, swap in `dist/code-preview-hljs.min.js`, which carries its own. See
 [Three builds](#three-builds).
 
@@ -109,8 +110,8 @@ page's `[data-theme]` is mirrored into the frame, so a demo goes dark with the d
 around it. A tool that sandboxes its preview onto a separate origin structurally
 cannot do that second part.
 
-**Two script tags and no build step.** 11KB on a docs site that already ships
-highlight.js, 53KB standalone — see [Three builds](#three-builds). No service worker, no
+**Two script tags and no build step.** 7.5KB gzipped on a docs site that already ships
+highlight.js, 23KB standalone — see [Three builds](#three-builds). No service worker, no
 bundler config, no origin to serve demo files from.
 
 Reach for something else when the shape of the problem is different:
@@ -121,6 +122,7 @@ Reach for something else when the shape of the problem is different:
 | [Sandpack](https://sandpack.codesandbox.io/)                           | demoing React components rather than markup and CSS.                                                                                   |
 | [@mdjs/mdjs-preview](https://www.npmjs.com/package/@mdjs/mdjs-preview) | you are already on the mdjs/rocket toolchain and write demos as JS functions.                                                          |
 | StackBlitz / CodePen embeds                                            | the reader should be able to fork the sample and keep it.                                                                              |
+| [CodeMirror](https://codemirror.net/) / [Monaco](https://microsoft.github.io/monaco-editor/) | the code block should be a real editor — multi-cursor, linting, IntelliSense. See [Editing is asked for](#editing-is-asked-for-not-assumed) for what that costs a docs page. |
 
 ## Attributes
 
@@ -136,6 +138,7 @@ Reach for something else when the shape of the problem is different:
 | `manifest-tag`    | which declaration in it to drive. Default: the first declared tag the sample uses |
 | `tab`             | which pane is open, and the live state: `code` (default), `css`, `js`, `options`  |
 | `no-edit`         | leave the code read-only — all of it, or only the panes it names                  |
+| `no-actions`      | drop the Edit and Run buttons — both, or only the one it names                    |
 | `no-toast`        | no event name over the preview — the panel still counts what fires                |
 | `no-shrink`       | never size the preview below its tallest measurement                              |
 | `reload`          | always rebuild the frame on edit, never patch it                                  |
@@ -276,17 +279,118 @@ highlight.js is pinned to v11 to match what static site generators emit at build
 time. If runtime and build-time output disagree, the block visibly reshuffles the
 first time it is focused.
 
-Edits apply on a debounce with no Run button — 250ms when the frame can be patched,
-600ms when it has to reload. Patching keeps stylesheets loaded and the scroll
-position; a reload is forced by `js` assets, a js pane, the `reload` attribute, an
-inline `<script>` in the sample, or a sample that is a whole document. All of those are
-the same trap from different ends: `innerHTML` never executes scripts it inserts, and a
-script that already ran does not re-run against markup replacing what it initialised.
+### Editing is asked for, not assumed
 
-An edit to the [css pane](#several-fences-several-tabs) is neither: the pane is one
-`<style>` in a head this element built, so it is a write to that element's text. Nothing
-reloads and nothing reparses, which means the sample keeps everything a rebuild would
-cost it — a script's variables, an open menu, the control that had focus.
+**A block that can be edited is not editable until you say so.** At rest it is a code
+block: no `contenteditable`, nothing announced as a text field, and a pencil button in its
+bottom-left corner saying it could be. Press that — or press <kbd>Enter</kbd> with the
+block focused — and it becomes an editor. <kbd>Esc</kbd> closes it again, as does pressing
+the button a second time.
+
+An always-editable block is the wrong default, and the reason is Tab. Tab has to indent
+inside a code editor, so it cannot also be the way out; a block that is quietly editable is
+therefore a keyboard trap sitting in the middle of a docs page, and every reader tabbing
+through hits it without having asked for an editor at all. The way out of that trap is a
+key nobody has been told about, told to them only once they are already in it.
+
+Opting in fixes both ends. Nobody lands in an editor they did not ask for, because the
+block is not focusable until it is one; and the <kbd>Esc</kbd> advice is owed only to
+someone who deliberately opened it, so it can appear at the moment it becomes true rather
+than as a permanent caption. What the block does keep at rest is a tab stop — that is what
+<kbd>Enter</kbd> opens, and it means a keyboard user is offered the editor where they
+already are instead of having to go and find an icon.
+
+Closing the editor is also the second way to apply a js edit, alongside the Run button:
+a sample that changed re-runs on the way out.
+
+The <kbd>Esc</kbd> hint is not drawn on a touch device — `(hover: none) and (pointer:
+coarse)`. It names a key that is not there, over the corner of the sample a thumb is about
+to land in, and the trap it warns about is a keyboard trap that a device with no keyboard
+cannot be in. The way out on touch is the Edit button, filled in for as long as there is
+something to get out of. The `aria-describedby` stays either way, since a screen reader is
+a keyboard whatever the pointer is doing.
+
+The badge this replaces — an **Editable** pill, and the `--code-preview-edit-label`
+property that reworded it — is gone. A button says the same thing and can be pressed.
+
+### Markup and css apply as you type; js waits for Run
+
+Markup and css are inert, so they follow the typing on a 250ms debounce. Patching keeps
+stylesheets loaded and the scroll position, and an edit to the
+[css pane](#several-fences-several-tabs) is cheaper still — the pane is one `<style>` in
+a head this element built, so it is a write to that element's text. Nothing reloads and
+nothing reparses, which means the sample keeps everything a rebuild would cost it: a
+script's variables, an open menu, the control that had focus.
+
+**Js is the exception, and it waits for the Run button**, for
+<kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> in the editor, or for the editor being
+closed. Run is always live and
+always re-runs the sample from whatever the blocks say when it is pressed — it is not an
+"apply the edit" button, so pressing it on a sample nobody has touched still starts the
+demo over: the counter back to zero, the animation from the top. Four things count as js:
+a [js pane](#several-fences-several-tabs),
+a `js` asset on the element, an inline `<script>` written in the markup pane, and the
+`reload` attribute. The inline `<script>` counts because it is js wherever it was typed —
+a single-fence js demo is exactly that — and because `innerHTML` never executes a script
+it inserts, so applying it silently would leave the demo rendered but dead.
+
+A button rather than a longer debounce, because no delay makes an unasked run safe. It
+reloads the document, which drops everything live in the sample. And a `srcdoc` frame is
+same-origin, so it shares the page's event loop: half-typed js — `while (true` with the
+closing paren still to come — hangs the whole tab, not just the preview. A longer debounce
+does not prevent that, it only decides how long the reader gets first.
+
+A sample that is a whole document is rebuilt rather than patched — `render` cannot patch
+a head it did not write — but that is not the same question. With no script in it there is
+nothing to execute, so it keeps the live typing markup gets.
+
+Turning an [options panel](#the-options-panel) knob is exempt from all of it. The click is
+already the reader asking, and a knob that did nothing until a second press on Run would
+be a bug.
+
+### The two buttons
+
+In the code block's bottom-left corner, two small buttons, in the order you reach for them
+— a glyph and the word for it, at the size of the tabs and the keyboard hint they share the
+element with:
+
+| Button   |                                                                                    |
+| -------- | ---------------------------------------------------------------------------------- |
+| **Edit** | opens the editor on the pane that is showing, and closes it again. A toggle          |
+| **Run**  | runs the sample again, edited or not. Only on samples that run something             |
+
+Both are plain buttons, except that each fills in with the accent while it is the state you
+are in: **Edit** while the editor is open, **Run** while the js pane is the one showing —
+there it is the button your edits are waiting on. The word on the button is its accessible
+name, so there is no `aria-label` or `title` that can come to disagree with it.
+
+They sit on the block rather than in the strip above it because that is what they act on,
+and in the bottom-left corner because the top-right is where a docs theme has already put
+its copy button. **This element leaves that button alone.** Copying a code block is what a
+docs theme already does well, on every block on the page including the ones that are not
+samples, and a second button doing the same job is worse than either alone.
+
+<kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> works in every open editor, not only the
+ones that wait — in a markup or css pane it means "stop waiting" and applies the pending
+debounce now.
+
+**Neither button appears on a sample with no editor in it.** A `no-edit` sample is a code
+block: there is nothing to open and, since it can never change, nothing to re-run. The
+theme's own copy button is the whole of what it needs.
+
+Both are on by default and `no-actions` takes them away, spelled the way `no-edit` is —
+bare for both, or naming the one to drop:
+
+```html
+<code-preview no-actions>…</code-preview>
+<code-preview no-actions="run">…</code-preview>
+```
+
+Dropping **Edit** leaves <kbd>Enter</kbd> on the focused block as the only way in, which is
+the keyboard's route anyway — a pointer user loses the editor entirely. Dropping **Run**
+from a js sample leaves <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> and closing the
+editor as the ways to apply an edit; both are keyed to what the sample is rather than to
+whether the button is there, so those edits are never stranded.
 
 ## Several fences, several tabs
 
@@ -473,11 +577,14 @@ place to leave a knob out is the manifest itself, by not documenting a property 
 
 Same element in the first two, and the only difference is whether highlight.js rides along:
 
-| Bundle                             |      |                                                                      |
-| ---------------------------------- | ---- | -------------------------------------------------------------------- |
-| `dist/code-preview.min.js`         | 11KB | the default. No highlighter; uses `window.hljs` if the page has one. |
-| `dist/code-preview-hljs.min.js`    | 53KB | highlight.js bundled in, for a page with none.                       |
-| `dist/code-preview-options.min.js` | 10KB | the options panel, on top of either. Carries no copy of the element. |
+| Bundle                             | gzipped | minified |                                                                      |
+| ---------------------------------- | ------- | -------- | -------------------------------------------------------------------- |
+| `dist/code-preview.min.js`         | 7.5KB   | 21KB     | the default. No highlighter; uses `window.hljs` if the page has one. |
+| `dist/code-preview-hljs.min.js`    | 23KB    | 63KB     | highlight.js bundled in, for a page with none.                       |
+| `dist/code-preview-options.min.js` | 3.7KB   | 9.3KB    | the options panel, on top of either. Carries no copy of the element. |
+
+Gzipped is what a server sends and so what the page actually pays; the minified column is
+there because it is the number a bundler's output listing shows you.
 
 The default reads the global per call rather than once at startup, so the order of the
 two script tags does not matter:
@@ -533,7 +640,8 @@ And per instance, the surface the panel drives:
 | `source`                        | the markup pane's text. Assigning it retypes the block and re-renders         |
 | `frameDocument`                 | the frame's document, once it holds one of ours — `undefined` until           |
 | `setFrameStyle(css)`            | one stylesheet appended last in the frame's head                              |
-| `toolbar`                       | the bar above the preview, created on first read                              |
+| `toolbar`                       | the strip above the preview — the width switcher's. Created on first read      |
+| `codeBar`                       | the strip above the code — the tabs' and the actions'. Created on first read   |
 | `codePanel`                     | the element's own child that holds the markup pane's block                    |
 | `addPane(name, panel[, code, language])` | register a pane and its tab. The options bundle is one caller       |
 | `onPanelSync`                   | assign a callback: "re-read what you are showing", on `tab` and on frame load |
@@ -571,7 +679,7 @@ custom property with a fallback, and every one of them is namespaced:
 | `--code-preview-fg`        | `inherit`                  | the selected tab, a hovered one     |
 | `--code-preview-fg-muted`  | `#656d76`                  | tabs, buttons, labels, the hint     |
 | `--code-preview-border`    | `#d8d8d8`                  | every border in the element          |
-| `--code-preview-accent`    | `#0969da`                  | focus rings, the tooltip, checkboxes and ranges |
+| `--code-preview-accent`    | `#0969da`                  | focus rings, Edit while open, Run on the js tab, the tooltip, checkboxes and ranges |
 | `--code-preview-danger`    | `#cf222e`                  | the error banner and the transparent-swatch cross |
 | `--code-preview-radius`    | `6px`                      | the outer corners; controls take half |
 | `--code-preview-font-mono` | `ui-monospace, monospace`  | every bit of text in the chrome     |
@@ -623,9 +731,11 @@ code-preview {
 } /* the default */
 ```
 
-`--code-preview-bar-height` (default `2.25rem`) is the same for the bar above the
-preview, reserved alongside it whenever `viewport-widths` or `manifest` will put one
-there.
+`--code-preview-bar-height` (default `2.25rem`) is the same for a toolbar strip. One is
+reserved above the code wherever the tabs are coming — a second fence, or a `manifest` —
+and a second above the preview wherever `viewport-widths` will put the width switcher
+there. A single-fence sample gets neither: it has no tabs, and its two buttons sit on the
+block rather than in a strip of their own.
 
 `--code-preview-options-height` (default `12rem`) is the third, and only matters with
 `tab="options"` — that is the one case where upgrading _hides_ something, since the code

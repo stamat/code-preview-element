@@ -87,10 +87,108 @@ shows up in a function signature.
 
   **CSS an author may be targeting:** `code-preview.is-code-pane` now means the pane
   showing has an *editor* in it, not merely code — a pane locked by either form no longer
-  gets the class, so the keyboard hint is not left describing a block nobody can type into.
+  gets the class, so the buttons and the keyboard hint are not left on a block nobody can
+  type into.
   Unchanged for a sample that locks nothing.
 
+- **Editing is opt-in: a block takes no keystrokes until you open it.** A block that can be
+  edited is not editable at rest — no `contenteditable`, nothing announced as a text field.
+  An **Edit** button in its bottom-left corner opens it, <kbd>Enter</kbd> on the focused
+  block does the same, and <kbd>Esc</kbd> or a second press on the button closes it again.
+
+  The reason is Tab. Tab has to indent inside a code editor, so it cannot also be the way
+  out — which makes an always-editable block a keyboard trap sitting in a docs page, hit by
+  every reader tabbing past a sample they never meant to type into, with the way out being
+  a key they are told about only once they are already stuck. Opting in removes the trap
+  rather than signposting it, and the <kbd>Esc</kbd> advice is then owed only to someone who
+  asked to be there. The block keeps a tab stop at rest so that <kbd>Enter</kbd> has
+  somewhere to be pressed: a keyboard user is offered the editor where they already are.
+
+  Closing the editor is also a second way to apply a js edit, alongside **Run**.
+
+  **DOM the element produces:** a `div.code-preview-actions` (`role="group"`) as a child of
+  the host — not of the strip, and not of the code block — holding
+  `button.code-preview-action`: `.code-preview-edit` (with `aria-pressed`) and
+  `.code-preview-run`. Each holds an `aria-hidden` glyph and a `<span>` with the word for it
+  — **Edit**, **Run** — and that word is the accessible name, so neither carries an
+  `aria-label` or a `title`. The `<pre>` of an editable pane now carries `tabindex="0"` and an
+  `aria-describedby` pointing at `p.code-preview-hint`; `role="textbox"`,
+  `aria-multiline`, `aria-keyshortcuts` and `contenteditable` are written on the `<code>`
+  only while the editor is open, and removed when it closes.
+
+  Both buttons are on by default and neither is built on a sample with no editor in it.
+  `no-actions` takes them away, spelled the way `no-edit` is: bare for both, or naming the
+  one to drop (`no-actions="run"`). Dropping **Run** from a js sample leaves
+  <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> and closing the editor as the ways to
+  apply an edit — both are keyed to what the sample is, not to whether the button exists.
+
+  The <kbd>Esc</kbd> hint is not drawn under `(hover: none) and (pointer: coarse)`: it names
+  a key a touch device does not have, and the trap it warns about is a keyboard trap. Its
+  `aria-describedby` is unaffected.
+
+  **CSS an author may be targeting:** `code-preview.is-editing` is new and says the editor
+  is open. `.is-editable` still says the element has one to open. The `--code-preview-hint-space`
+  bottom padding on an editable block is now the room the buttons sit in as well as the hint.
+
+- **No copy button of the element's own, and a docs theme's is left alone.** Copying a code
+  block is something a docs theme already does, on every block on the page rather than only
+  on the samples. The element's own copy button is gone and so is the rule that hid the
+  theme's.
+
+  **CSS an author may be targeting:** `code-preview :is(pre, .code-wrap) > button { display: none }`
+  no longer ships. A theme that was relying on the element to hide its button gets it back;
+  the `display: revert` override some pages added for exactly that is now a no-op and can go.
+  `.code-preview-copy`, `.code-preview-note`, `.code-preview-icon-copy` and
+  `.code-preview-icon-check` no longer exist, and `no-actions="copy"` names nothing.
+
 ### Changed
+
+- **Js waits for a Run button; markup and css still apply as you type.** The 600ms reload
+  debounce is gone — it was never the right tool. Markup and css are inert and keep the
+  250ms live path. Js does not: on a js pane, a `js` asset, an inline `<script>` in the
+  markup pane, or `reload`, the edit applies on **Run** or on
+  <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> and not before.
+
+  Run is always live and has no edited state. It re-runs the sample from whatever the
+  blocks say when it is pressed, so pressing it on a sample nobody has touched still starts
+  the demo over — the counter back to zero, the animation from the top. A button that greys
+  itself out between edits is one whose job the reader has to keep track of.
+
+  No delay makes an unasked run safe. It reloads the document, dropping everything live in
+  the sample — a script's state, an open menu, the control a keyboard user had focused. And
+  a `srcdoc` frame is same-origin, so it shares the page's event loop: half-typed js,
+  `while (true` with the closing paren still to come, hangs the whole tab and not just the
+  preview. A longer debounce only decides how long the reader gets before that happens.
+
+  A whole-document sample is rebuilt rather than patched, as it always was, but that is a
+  different question: with no script in it there is nothing to execute, so it keeps the
+  live typing. Turning an options panel knob is exempt and applies immediately, as it did.
+
+  **DOM the element produces:** `button.code-preview-run` only on samples that run
+  something, and it carries no disabled state of any kind.
+
+  **CSS an author may be targeting:** editable blocks gained
+  `aria-keyshortcuts="Escape Control+Enter Meta+Enter"`, where it was `Escape` alone. The
+  host gained `.is-js-pane` while the js pane is the one showing, which is what fills the
+  Run button in with `--code-preview-accent`; off that tab it is a plain icon button like
+  edit and copy.
+
+- **The tab strip moved above the code, and the toolbar split in two.** The tabs and the
+  new actions belong to the code — a tab strip has to sit against the thing it labels to
+  read as its label — so they are now in their own strip between the preview and the panes.
+  The width switcher stays above the preview it re-renders. Both are still
+  `.code-preview-bar`; which one is which is decided by the side of the viewport they are
+  on, and the stylesheet already had the rules for both.
+
+  **DOM the element produces:** two `.code-preview-bar` strips where there was one, each
+  built only when it has something to hold — the code's when the tabs are coming, the
+  preview's with `viewport-widths`. A single-fence sample has neither. `toolbar` still means
+  the preview's strip; the new `codeBar` is the code's.
+
+  **CSS an author may be targeting:** the height reserved before upgrade counts each strip
+  the markup can be seen to be asking for, through a new internal `--code-preview-bars`.
+  `--code-preview-bar-height` is unchanged and still the knob. `.code-preview-widths` no
+  longer carries `margin-inline-start: auto` — it is alone in its strip now.
 
 - **The tab strip moved from the options bundle into the element.** It was built by
   `code-preview-options.js`, which could only ever know about two panes. `addPane()` is the

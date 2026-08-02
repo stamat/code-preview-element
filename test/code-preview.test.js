@@ -149,6 +149,18 @@ function mount(
   return page.window.document.querySelector('code-preview')
 }
 
+// A block is no longer editable at rest, so `contenteditable` cannot say which panes have
+// an editor behind the button. The `aria-describedby` pointing at the keyboard hint can:
+// it goes on the `pre` of every pane that got one and on nothing else.
+const editors = (element) =>
+  [...element.querySelectorAll('pre')].map((pre) => pre.hasAttribute('aria-describedby'))
+
+// Open the editor the way a reader does. Returns the block now taking keystrokes.
+function openEditor(element) {
+  element.querySelector('.code-preview-edit').click()
+  return element.querySelector('[contenteditable]')
+}
+
 test('the element renders through srcdoc, not into about:blank', () => {
   const element = mount()
   const viewport = element.querySelector('.code-preview-viewport')
@@ -189,7 +201,29 @@ test('reconnecting moves the element rather than rebuilding it', () => {
   body.appendChild(element)
 
   assert.equal(element.querySelectorAll('.code-preview-viewport').length, 1)
+  // One strip, and one is the whole count: the widths', above the preview. A rebuild on
+  // reconnect would stack a second on it — and a second preview under that.
   assert.equal(element.querySelectorAll('.code-preview-bar').length, 1)
+})
+
+// The same move, on a sample that has an editor: the jars are torn down on the way out and
+// rebuilt on the way back in, and the buttons are dom that travels with the element.
+test('reconnecting rebuilds the editors and keeps one set of buttons', () => {
+  const element = mount('css="../../dist/lib.css" reload', undefined, {
+    setup: (win) => { win.document.execCommand = () => true }
+  })
+  const body = element.ownerDocument.body
+
+  openEditor(element)
+  element.remove()
+  // Leaving the dom closes the editor: a block still carrying `contenteditable` with its
+  // jar destroyed under it takes keystrokes nothing is listening for.
+  assert.equal(element.querySelector('[contenteditable]'), null, 'the editor survived the move')
+  body.appendChild(element)
+
+  assert.equal(element.querySelectorAll('.code-preview-actions').length, 1)
+  assert.deepEqual(editors(element), [true], 'the editor never came back')
+  assert.ok(openEditor(element), 'the button no longer opens anything')
 })
 
 test('a plain block gets highlighted, a pre-highlighted one is left alone', () => {
@@ -236,77 +270,80 @@ test('the default build highlights through the page global', () => {
 })
 
 // WCAG 2.1.2, and the one accessibility failure here that has no workaround: Tab indents
-// inside the editor, so a keyboard user who tabs into it has nothing left to press. The
-// assertion is on `defaultPrevented`, because that is exactly the difference between a
-// Tab the editor ate and a Tab the browser gets to move focus with.
-test('Escape hands Tab back, and leaving the editor takes it again', () => {
+// inside the editor, so a keyboard user who lands in it has nothing left to press. The
+// answer is not to be in it unasked — the block takes no keystrokes until somebody opens
+// it — and Escape is the way back out of the state they chose to enter.
+test('the block is inert until opened, and Escape is the way back out', () => {
   const element = mount('css="../../dist/lib.css" viewport-widths="375"', undefined, {
     // CodeJar edits through execCommand, which jsdom has no implementation of. The
     // editing is not what is under test here; which handler ran is.
     setup: (win) => { win.document.execCommand = () => true }
   })
   const code = element.querySelector('code')
+  const pre = code.parentElement
   const win = element.ownerDocument.defaultView
 
-  // CodeJar leaves a block that is editable and nothing else — no role, no name.
-  assert.equal(code.getAttribute('role'), 'textbox')
-  assert.equal(code.getAttribute('aria-multiline'), 'true')
-  assert.equal(code.getAttribute('aria-keyshortcuts'), 'Escape')
+  // At rest it is a code block and says so: nothing editable, and nothing announced as a
+  // text field. What it does have is a tab stop, which is the keyboard's way to the editor.
+  assert.equal(code.getAttribute('contenteditable'), null, 'the block took keystrokes nobody asked for')
+  assert.equal(code.getAttribute('role'), null, 'a read-only block was announced as a textbox')
+  assert.equal(pre.getAttribute('tabindex'), '0', 'no way for a keyboard to reach the editor')
   assert.match(code.getAttribute('aria-label'), /html/i)
 
-  // The advisory the criterion asks for, said once to both audiences: `aria-describedby`
-  // for a screen reader, and the same element shown by the stylesheet for everyone else.
-  // A live region as well as a description, because it changes and a description is read
-  // on arrival and never again.
+  // The advisory, said once to both audiences: `aria-describedby` for a screen reader, and
+  // the same element shown by the stylesheet for everyone else. Two states of one sentence,
+  // and the closed one is what the `pre` a reader tabs to points at.
   const hint = element.querySelector('.code-preview-hint')
   assert.ok(hint, 'no keyboard hint')
-  assert.equal(code.getAttribute('aria-describedby'), hint.id)
-  assert.equal(hint.getAttribute('role'), 'status')
+  assert.equal(pre.getAttribute('aria-describedby'), hint.id)
+  assert.match(hint.textContent, /Press Enter/)
 
-  const press = (key) => {
-    const event = new win.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
-    code.dispatchEvent(event)
+  const press = (target, key, init = {}) => {
+    const event = new win.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init })
+    target.dispatchEvent(event)
     return event.defaultPrevented
   }
 
-  // The hint is advice about one key, so it is for whoever presses that key. A pointer
-  // user can click straight back out and does not need a sentence under every sample they
-  // click into, and nor does someone typing in there — but the moment either of them
-  // presses Tab they are in the trap, so it has to turn up late rather than not at all.
-  const arrive = (key) => {
-    win.document.dispatchEvent(key
-      ? new win.KeyboardEvent('keydown', { key, bubbles: true })
-      : new win.Event('pointerdown', { bubbles: true }))
-    code.dispatchEvent(new win.FocusEvent('focusin', { bubbles: true }))
-  }
-  arrive('Tab')
-  assert.ok(element.classList.contains('is-key-focus'), 'tabbing into the editor showed no hint')
-  code.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }))
-  arrive('ArrowDown')
-  assert.equal(element.classList.contains('is-key-focus'), false, 'arrowing into the editor showed a hint about Tab')
-  code.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }))
-  arrive(null)
-  assert.equal(element.classList.contains('is-key-focus'), false, 'clicking into the editor showed the hint anyway')
-  press('a')
-  assert.equal(element.classList.contains('is-key-focus'), false, 'typing showed a hint about a key nobody pressed')
-  press('Tab')
-  assert.ok(element.classList.contains('is-key-focus'), 'Tab after a click never brought the hint up')
-
-  assert.equal(press('Tab'), true, 'Tab stopped indenting')
-  press('Escape')
-  assert.equal(press('Tab'), false, 'Escape did not hand Tab back: the editor is a keyboard trap')
-  assert.match(hint.textContent, /Tab now leaves/, 'Escape gave no sign it had done anything')
-
-  // Blur re-arms it, so coming back finds an editor that indents again.
-  code.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }))
-  assert.equal(press('Tab'), true, 'indenting never came back')
+  // Enter on the block is the keyboard's Edit button — the affordance where the reader
+  // already is, rather than an icon in the corner they have to go and find.
+  assert.equal(press(pre, 'Enter'), true, 'Enter on the block did nothing')
+  assert.ok(element.classList.contains('is-editing'))
+  assert.equal(code.getAttribute('contenteditable'), 'true')
+  assert.equal(code.getAttribute('role'), 'textbox')
+  assert.equal(code.getAttribute('aria-multiline'), 'true')
+  // All three keys, in every editable pane: Escape closes the editor, and the Enter pair
+  // applies whatever is waiting — the debounce in a markup or css pane, the Run button's
+  // held-back edit in one that runs js.
+  assert.equal(code.getAttribute('aria-keyshortcuts'), 'Escape Control+Enter Meta+Enter')
+  assert.equal(code.getAttribute('aria-describedby'), hint.id)
   assert.match(hint.textContent, /Press Esc/)
+  assert.equal(element.querySelector('.code-preview-edit').getAttribute('aria-pressed'), 'true')
+
+  // Tab indents while it is open, which is the whole reason Escape has to exist.
+  assert.equal(press(code, 'Tab'), true, 'Tab stopped indenting')
+
+  // And Escape closes it: not editable, not announced, not a keyboard trap — and the tab
+  // stop is back, so the next Tab moves on from where the reader was.
+  assert.equal(press(code, 'Escape'), true)
+  assert.equal(element.classList.contains('is-editing'), false, 'Escape left the editor open')
+  assert.equal(code.getAttribute('contenteditable'), null)
+  assert.equal(code.getAttribute('role'), null)
+  assert.equal(code.getAttribute('aria-describedby'), null)
+  assert.equal(pre.getAttribute('tabindex'), '0')
+  assert.match(hint.textContent, /Press Enter/)
+  assert.equal(element.querySelector('.code-preview-edit').getAttribute('aria-pressed'), 'false')
 
   // An Escape pressed elsewhere in the element — a width button, a panel field — is not
-  // the editor's, and must not hand Tab back on its behalf.
-  element.querySelector('.code-preview-width')
-    .dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
-  assert.equal(press('Tab'), true, 'an Escape outside the editor released Tab')
+  // the editor's, and must not close it on its behalf.
+  press(pre, 'Enter')
+  press(element.querySelector('.code-preview-width'), 'Escape')
+  assert.ok(element.classList.contains('is-editing'), 'an Escape outside the editor closed it')
+
+  // Nor is a modified Enter on the block an ask to open it: the page may have its own plans
+  // for that combination, and Ctrl+Enter already means something inside the editor.
+  press(code, 'Escape')
+  assert.equal(press(pre, 'Enter', { ctrlKey: true }), false)
+  assert.equal(element.classList.contains('is-editing'), false)
 })
 
 // The other half of demonstrating an accessible component: it has to survive being used.
@@ -323,7 +360,7 @@ test('a keystroke that changed nothing does not reload the frame', async() => {
   })
   const win = element.ownerDocument.defaultView
   const frame = element.querySelector('iframe')
-  assert.ok(element.querySelector('code').hasAttribute('contenteditable'), 'the editor never attached')
+  assert.ok(openEditor(element), 'the editor never attached')
 
   // Writing srcdoc with the identical string still counts, so the assertion cannot be on
   // its value: the reload is the attribute being written at all.
@@ -335,6 +372,69 @@ test('a keystroke that changed nothing does not reload the frame', async() => {
   await new Promise((resolve) => setTimeout(resolve, 800))
 
   assert.equal(writes, 0, 'an unchanged sample rebuilt the frame')
+})
+
+// The gate, and what the button does with it. Running js drops everything live in the
+// sample, and half-typed js in a same-origin srcdoc hangs this page's event loop along
+// with the frame's — no debounce makes that safe, so typing never triggers it.
+//
+// `reload` is the cheapest way to be a sample that runs something, and the only path jsdom
+// can be asked about at all: it renders no srcdoc, so the patch path writes into a
+// document that never held the sample.
+test('typing never runs the sample, and Run always does', async() => {
+  const element = mount('css="../../dist/lib.css" reload', undefined, {
+    setup: (win) => { win.document.execCommand = () => true }
+  })
+  const win = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
+  const code = element.querySelector('code')
+  const run = element.querySelector('.code-preview-run')
+
+  // Built with the first paint, not at the first keystroke: a button that turns up later
+  // is one the reader did not ask for, under hands that may be mid-click on something else.
+  assert.ok(run, 'a sample that can only be run shipped no way to run it')
+  openEditor(element)
+  assert.equal(code.getAttribute('aria-keyshortcuts'), 'Escape Control+Enter Meta+Enter')
+
+  let writes = 0
+  new win.MutationObserver((records) => { writes += records.length })
+    .observe(frame, { attributes: true, attributeFilter: ['srcdoc'] })
+
+  code.textContent = '<b>bye</b>'
+  code.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
+  await new Promise((resolve) => setTimeout(resolve, 800))
+
+  assert.equal(writes, 0, 'typing ran the sample')
+
+  // A MutationObserver delivers on a microtask, so the count is only true after one.
+  run.click()
+  await Promise.resolve()
+  assert.equal(writes, 1, 'Run did not run the sample')
+
+  // Again, with nothing edited in between. Run means run — the counter back to zero, the
+  // animation from the top — so it is not the dedupe's business that the text is the same.
+  run.click()
+  await Promise.resolve()
+  assert.equal(writes, 2, 'Run declined to re-run an unchanged sample')
+})
+
+// The other caller of the same path. A knob is not typing — the reader asking for the
+// change *is* the click, and a preview that then waited for a second one on Run would be
+// asking twice for the same thing.
+test('an options knob applies to a reloading sample without going through Run', async() => {
+  const element = mount('css="../../dist/lib.css" reload no-edit')
+  const win = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  let writes = 0
+  new win.MutationObserver((records) => { writes += records.length })
+    .observe(frame, { attributes: true, attributeFilter: ['srcdoc'] })
+
+  element.source = '<button class="btn primary">Hi</button>'
+  await new Promise((resolve) => setTimeout(resolve, 800))
+
+  assert.equal(writes, 1, 'a knob was held back behind a button the reader never pressed')
 })
 
 // The third case that has to reload, and the one that fails most quietly. A js demo has
@@ -378,8 +478,149 @@ test('a sample carrying its own script reloads the frame instead of patching it'
   assert.equal(await rebuilds('&lt;b&gt;hi&lt;/b&gt;', '<b>hi</b><p>the &lt;script&gt; tag</p>'), 0)
 })
 
+// Neither strip is built without something to put in it: the code's holds the tabs and a
+// lone fence has none, and the preview's holds the widths. An empty one is a border and a
+// height reservation around nothing.
 test('no width switcher unless one is asked for', () => {
-  assert.equal(mount().querySelector('.code-preview-bar'), null)
+  const element = mount()
+  assert.equal(element.querySelector('.code-preview-widths'), null)
+  assert.equal(element.querySelectorAll('.code-preview-bar').length, 0)
+  assert.equal(element.firstElementChild.className, 'code-preview-viewport',
+    'a strip with nothing in it was put above the preview')
+})
+
+// `no-edit`: nothing to edit and so nothing to run. The theme's own copy button is left in
+// place on a block like this, which is the whole of what a read-only sample needs.
+test('a locked sample gets no buttons at all', () => {
+  const element = mount()
+  assert.equal(element.querySelector('.code-preview-actions'), null)
+  assert.equal(element.querySelector('.code-preview-hint'), null, 'a hint about an editor that is not there')
+  assert.equal(element.querySelector('pre').getAttribute('tabindex'), null,
+    'a tab stop on a block with nothing to open')
+})
+
+// The word on the button is its accessible name, so there is nothing to keep in step: no
+// `aria-label` that can drift from what it says, and no `title` repeating either of them.
+test('both actions are named by the word on them, and the pair reads edit, run', () => {
+  const element = mount('css="../../dist/lib.css" reload', undefined, {
+    setup: (win) => { win.document.execCommand = () => true }
+  })
+  const buttons = [...element.querySelectorAll('.code-preview-actions button')]
+
+  assert.deepEqual(buttons.map((b) => b.textContent), ['Edit', 'Run'])
+  for (const button of buttons) {
+    assert.equal(button.getAttribute('aria-label'), null, 'a second name to keep in step')
+    assert.equal(button.title, '', 'a tooltip repeating the visible label')
+    // The glyph is the label drawn twice; picked up, a screen reader would read it twice.
+    assert.equal(button.querySelector('svg').getAttribute('aria-hidden'), 'true')
+  }
+  // Edit is a toggle and says so from the start, not only once it has been pressed.
+  assert.equal(buttons[0].getAttribute('aria-pressed'), 'false')
+  // On the block, not in the strip above it: they act on the code, so they sit on it.
+  assert.equal(element.querySelector('.code-preview-actions').parentElement, element)
+})
+
+// Spelled the way `no-edit` is: bare turns both off, named drops those.
+test('no-actions drops the buttons it names', () => {
+  const labels = (attributes) => [...mount(attributes, undefined, {
+    setup: (win) => { win.document.execCommand = () => true }
+  }).querySelectorAll('.code-preview-actions button')].map((b) => b.textContent)
+
+  assert.deepEqual(labels('css="../../dist/lib.css" reload'), ['Edit', 'Run'])
+  assert.deepEqual(labels('css="../../dist/lib.css" reload no-actions="run"'), ['Edit'])
+  assert.deepEqual(labels('css="../../dist/lib.css" reload no-actions="edit"'), ['Run'])
+
+  // Bare: nothing to put in the group, so there is no group. The keyboard still has Enter
+  // on the block — the shortcut is keyed to what the sample is, not to what was built.
+  const bare = mount('css="../../dist/lib.css" reload no-actions', undefined, {
+    setup: (win) => { win.document.execCommand = () => true }
+  })
+  assert.equal(bare.querySelector('.code-preview-actions'), null)
+})
+
+// Run is a plain icon button like Edit, except on the tab whose edits it applies.
+// The class is the stylesheet's whole basis for filling it in, so it is what gets asserted
+// — the fill itself is a paint jsdom does not do.
+test('run reads as primary only while the js pane is showing', () => {
+  const element = mount('css="../../dist/lib.css"', `
+    <pre><code class="hljs language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>
+    <pre><code class="hljs language-js">go()</code></pre>
+  `, { setup: (win) => { win.document.execCommand = () => true } })
+
+  assert.ok(element.querySelector('.code-preview-run'), 'a js pane and no way to run it')
+  assert.equal(element.classList.contains('is-js-pane'), false, 'the markup pane is showing')
+
+  element.setAttribute('tab', 'js')
+  assert.equal(element.classList.contains('is-js-pane'), true)
+
+  element.setAttribute('tab', 'code')
+  assert.equal(element.classList.contains('is-js-pane'), false)
+})
+
+// Dropping Run must not strand the edits it was the way to apply. The shortcut is keyed
+// off what the sample is rather than off the button, so it still works.
+test('the keyboard shortcut runs a js sample that has no Run button', async() => {
+  const element = mount('css="../../dist/lib.css" reload no-actions="run"', undefined, {
+    setup: (win) => { win.document.execCommand = () => true }
+  })
+  const win = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
+  const code = element.querySelector('code')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(element.querySelector('.code-preview-run'), null, 'the button was asked not to be there')
+
+  let writes = 0
+  new win.MutationObserver((records) => { writes += records.length })
+    .observe(frame, { attributes: true, attributeFilter: ['srcdoc'] })
+
+  code.textContent = '<b>bye</b>'
+  code.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  assert.equal(writes, 0, 'typing ran the sample')
+
+  const event = new win.KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true })
+  code.dispatchEvent(event)
+  await Promise.resolve()
+  assert.equal(event.defaultPrevented, true, 'the shortcut was not claimed')
+  assert.equal(writes, 1, 'the edit had nowhere to go')
+})
+
+test('edit opens the pane that is showing, and switching tabs closes it', () => {
+  const element = mount('css="../../dist/lib.css"', `
+    <pre><code class="hljs language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>
+    <pre><code class="hljs language-css">b { color: red }</code></pre>
+  `, { setup: (win) => { win.document.execCommand = () => true } })
+  const edit = element.querySelector('.code-preview-edit')
+  const [markup, css] = element.querySelectorAll('code')
+
+  // Several fences build the tab strip while collecting the panes, which is before the
+  // preview exists to sit after — so the strip is prepended and the viewport is prepended
+  // in front of it. The order has to come out the same as it does for a strip built late.
+  assert.deepEqual([...element.children].slice(0, 2).map((node) => node.className),
+    ['code-preview-viewport', 'code-preview-bar'])
+
+  // Edit means the editor on screen. The css pane is showing and editable, so it is the
+  // one that opens — not the markup it happens to sit beside.
+  element.setAttribute('tab', 'css')
+  edit.click()
+  assert.equal(element.ownerDocument.activeElement, css)
+  assert.equal(css.getAttribute('contenteditable'), 'true')
+  assert.equal(markup.getAttribute('contenteditable'), null, 'a pane nobody opened took keystrokes')
+
+  // Switching away closes it: an editor behind a collapsed pane is one nobody can see to
+  // Esc out of, and the button now means the pane the reader moved to.
+  element.setAttribute('tab', 'code')
+  assert.equal(css.getAttribute('contenteditable'), null, 'the hidden pane was left editable')
+  assert.equal(element.classList.contains('is-editing'), false)
+  assert.equal(edit.getAttribute('aria-pressed'), 'false')
+
+  // And pressing it again is the way out for a pointer, which has no Escape.
+  edit.click()
+  assert.equal(element.ownerDocument.activeElement, markup)
+  edit.click()
+  assert.equal(markup.getAttribute('contenteditable'), null, 'the toggle only went one way')
+  assert.equal(element.ownerDocument.activeElement, markup.parentElement,
+    'closing the editor dropped focus instead of handing it back to the block')
 })
 
 test('the width switcher drives the viewport-width attribute', () => {
@@ -644,13 +885,25 @@ test('the tabs are built before the manifest lands, so the box does not grow lat
   assert.equal(code.getAttribute('tabindex'), '0')
 })
 
-test('the tabs and the width buttons share one bar', () => {
+// Each control sits against the box it acts on. The widths re-render the preview, so they
+// are above the preview; the tabs choose which block is showing, so they are above the
+// code. A tab strip anywhere else is a strip that does not read as the label of the thing
+// it labels.
+test('the widths sit above the preview and the tabs above the code', () => {
   const element = mountWithOptions('manifest="m.json" viewport-widths="375" no-edit')
-  const bar = element.querySelectorAll('.code-preview-bar')
-  assert.equal(bar.length, 1, 'two bars is two borders and two reservations')
-  assert.equal(bar[0].querySelector('.code-preview-tabs').nextElementSibling.className, 'code-preview-widths')
+  const [top, bottom] = element.querySelectorAll('.code-preview-bar')
+
+  assert.equal(top.nextElementSibling.className, 'code-preview-viewport')
+  assert.equal(bottom.previousElementSibling.className, 'code-preview-viewport')
+
+  assert.ok(top.querySelector('.code-preview-widths'), 'the widths left the preview')
+  assert.equal(top.querySelector('.code-preview-tabs'), null, 'the tabs are not about the preview')
+  assert.ok(bottom.querySelector('.code-preview-tabs'), 'the tabs left the code')
+  // The buttons are in neither strip: they act on the block, so they sit on it.
+  assert.equal(element.querySelector('.code-preview-bar .code-preview-actions'), null)
+
   // The width buttons keep the plain-button treatment they had: they switch no panels.
-  assert.equal(bar[0].querySelector('.code-preview-widths').getAttribute('role'), 'group')
+  assert.equal(top.querySelector('.code-preview-widths').getAttribute('role'), 'group')
 })
 
 test('the tab attribute is the state, whoever writes it', () => {
@@ -685,10 +938,12 @@ test('switching tab takes focus out of the pane being hidden', () => {
   const element = mountWithOptions('manifest="m.json"')
   const [codeTab, optionsTab] = element.querySelectorAll('[role="tab"]')
   const doc = element.ownerDocument
-  const editor = element.querySelector('code')
+  // The `pre`, which is what holds focus at rest: the block inside it takes keystrokes only
+  // while the editor is open, and this is about the pane being hidden either way.
+  const editor = element.querySelector('pre')
 
   editor.focus()
-  assert.equal(doc.activeElement, editor, 'jsdom would not focus the editor: the test proves nothing')
+  assert.equal(doc.activeElement, editor, 'jsdom would not focus the pane: the test proves nothing')
 
   element.setAttribute('tab', 'options')
   assert.equal(doc.activeElement, optionsTab, 'focus was left in the hidden code pane')
@@ -1104,8 +1359,7 @@ test('a full-document sample keeps its markup editable, and the panes beside it 
     <pre><code class="hljs language-html">&lt;!DOCTYPE html&gt;&lt;html&gt;&lt;body&gt;hi&lt;/body&gt;&lt;/html&gt;</code></pre>
     <pre><code class="hljs language-css">.a { color: red }</code></pre>
   `, { setup: (win) => { win.document.execCommand = () => true } })
-  const editable = [...element.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable'))
-  assert.deepEqual(editable, ['true', null])
+  assert.deepEqual(editors(element), [true, false])
 })
 
 // Skipping the second fence left its block permanently visible under whichever pane was
@@ -1120,19 +1374,23 @@ test('a second fence in the same language gets its own read-only tab, not a stra
   const tabs = [...element.querySelectorAll('[role="tab"]')]
   assert.deepEqual(tabs.map((tab) => tab.dataset.tab), ['code', 'code2'])
   assert.equal([...element.querySelectorAll('[data-pane]')][1].getAttribute('hidden'), 'until-found')
-  const editable = [...element.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable'))
-  assert.deepEqual(editable, ['true', null])
+  assert.deepEqual(editors(element), [true, false])
 })
 
-// It was always rebuilt — `render` cannot patch a document that owns its head — but on
-// the patch's short leash: one reload per 250ms keystroke instead of 600.
-test('editing a whole-document sample debounces on the reload delay, not the patch one', async() => {
+// The gate is about executing code, not about rebuilding. A sample that owns its whole
+// document can only ever be rebuilt — `render` cannot patch a head it did not write — but
+// with no script in it there is nothing to execute and nothing to hang the tab, so it gets
+// the live typing markup gets. It costs a reparse, which is what a reparse is worth.
+test('a whole-document sample with no script still applies as you type', async() => {
   const element = mount('',
     '<pre><code class="hljs language-html">&lt;!DOCTYPE html&gt;&lt;html&gt;&lt;body&gt;hi&lt;/body&gt;&lt;/html&gt;</code></pre>',
     { setup: (win) => { win.document.execCommand = () => true } })
   const win = element.ownerDocument.defaultView
   const frame = element.querySelector('iframe')
   await new Promise((resolve) => setTimeout(resolve, 0))
+
+  // Nothing in it runs, so there is nothing for a Run button to be for.
+  assert.equal(element.querySelector('.code-preview-run'), null, 'an inert sample was given a Run button')
 
   let writes = 0
   new win.MutationObserver((records) => { writes += records.length })
@@ -1142,11 +1400,8 @@ test('editing a whole-document sample debounces on the reload delay, not the pat
   code.textContent = '<!DOCTYPE html><html><body>bye</body></html>'
   code.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
 
-  // Past the 250ms patch delay, short of the 600ms reload one.
   await new Promise((resolve) => setTimeout(resolve, 400))
-  assert.equal(writes, 0, 'a document sample rebuilt on the patch delay')
-  await new Promise((resolve) => setTimeout(resolve, 500))
-  assert.equal(writes, 1, 'the edit never rendered')
+  assert.equal(writes, 1, 'a document sample waited for a button it does not have')
 })
 
 test('every pane the frame can run gets an editor, and the rest stay read-only', () => {
@@ -1155,9 +1410,7 @@ test('every pane the frame can run gets an editor, and the rest stay read-only',
     <pre><code class="hljs language-css">.a { color: red }</code></pre>
     <pre><code class="hljs language-scss">.a { &amp;:hover { color: red } }</code></pre>
   `)
-  const editable = [...element.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable'))
-
-  assert.deepEqual(editable, ['true', 'true', null])
+  assert.deepEqual(editors(element), [true, true, false])
   // A language the frame cannot run is still worth showing beside the sample — it is
   // just not something there is anywhere to type into.
   assert.equal([...element.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent).at(-1), 'SCSS')
@@ -1172,20 +1425,16 @@ test('no-edit with panes named locks those and leaves the rest editable', () => 
     <pre><code class="hljs language-css">.a { color: red }</code></pre>
     <pre><code class="hljs language-js">console.log(1)</code></pre>
   `)
-  assert.deepEqual(
-    [...named.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable')),
-    ['true', null, null])
+  assert.deepEqual(editors(named), [true, false, false])
 
   const byLanguage = mount('no-edit="HTML"', `
     <pre><code class="hljs language-html">&lt;p&gt;hi&lt;/p&gt;</code></pre>
     <pre><code class="hljs language-css">.a { color: red }</code></pre>
   `)
-  assert.deepEqual(
-    [...byLanguage.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable')),
-    [null, 'true'])
+  assert.deepEqual(editors(byLanguage), [false, true])
 
-  // The hint is a live region describing an editor; a locked pane showing must not leave
-  // it announcing Tab advice about a block nobody can type into.
+  // The buttons and the hint describe an editor; a locked pane showing must not leave an
+  // Edit button on it that would open a different block.
   byLanguage.setAttribute('tab', 'code')
   assert.equal(byLanguage.classList.contains('is-code-pane'), false)
   byLanguage.setAttribute('tab', 'css')
@@ -1202,9 +1451,7 @@ test('a fence can lock itself, as a class or an attribute, and highlighting cann
     <pre><code class="language-css no-edit">.a { color: red }</code></pre>
     <pre no-edit><code class="hljs language-js">console.log(1)</code></pre>
   `)
-  assert.deepEqual(
-    [...element.querySelectorAll('code')].map((code) => code.getAttribute('contenteditable')),
-    ['true', null, null])
+  assert.deepEqual(editors(element), [true, false, false])
 
   // The css block arrived plain, so the element highlighted it — which drops every class
   // hljs did not write, `no-edit` included.

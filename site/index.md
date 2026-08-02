@@ -198,8 +198,13 @@ watch it fall back on its own.
 
 ## A sample that runs its own script
 
-Inline `<script>` means every edit rebuilds the frame rather than patching it —
-`innerHTML` never executes scripts it inserts.
+Markup and css are inert, so they apply as you type. Js is not, and it is the one thing
+this element will not do behind your back: running it reloads the document, dropping
+everything live in the sample, and half-typed js in a same-origin frame hangs this page
+along with the preview. An inline `<script>` is js wherever it was typed, so this sample
+waits. Change something below and press **Run** at the end of the strip, or
+<kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> without leaving the editor. Run means
+run, every time — press it without editing anything and the counter starts over.
 
 <code-preview reload style="--code-preview-height: 70px">
 
@@ -217,10 +222,12 @@ Inline `<script>` means every edit rebuilds the frame rather than patching it �
 ## Several fences, several tabs
 
 Markup, css and js written as the three fences they are become three tabs — the
-language read off each fence, nothing to configure. The js pane forces the same reload
-an inline `<script>` does; the css pane never costs one, because an edit there is a
-write into the frame's stylesheet. Click the button a few times, then restyle it on the
-CSS tab and watch the count survive.
+language read off each fence, nothing to configure. The tabs sit above the code they
+switch; Edit and Run sit in the block's bottom-left corner, opposite the theme's own copy
+button, and Edit means whichever pane you are looking at. The js pane waits for
+**Run** the same way an inline `<script>` does; the css pane never does, because an edit
+there is a write into the frame's stylesheet. Click the button a few times, then restyle
+it on the CSS tab and watch the count survive.
 
 <code-preview style="--code-preview-height: 70px">
 

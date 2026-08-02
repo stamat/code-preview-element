@@ -36,14 +36,32 @@ code-preview {
 code-preview:not(:defined)::before {
   content: "";
   display: block;
-  height: var(--code-preview-height, 8rem);
+  height: calc(var(--code-preview-height, 8rem) + var(--code-preview-bars, 0px));
 }
 
-/* The bar is prepended by the same upgrade, so its height is part of the reservation.
-   Shared variable rather than a second guess: the bar below is sized to it. Either
-   attribute puts a bar there — `viewport-widths` its buttons, `manifest` the tab strip. */
-code-preview:not(:defined):is([viewport-widths], [manifest])::before {
-  height: calc(var(--code-preview-height, 8rem) + var(--code-preview-bar-height, 2.25rem));
+/* The strips the upgrade inserts are part of the reservation too, and there are two of
+   them to account for. One variable each rather than one count for both, so that each
+   rule below states a single fact instead of every combination of the two.
+
+   Neither is the default. The code's strip holds the tabs and nothing else, so it arrives
+   only with a second pane; the preview's appears only where `viewport-widths` asks for the
+   width switcher. Both are things the markup says before the upgrade can, which is what
+   makes them answerable here at all. */
+code-preview:not(:defined)::before {
+  --code-preview-bar-code: 0px;
+  --code-preview-bar-preview: 0px;
+  --code-preview-bars: calc(var(--code-preview-bar-code) + var(--code-preview-bar-preview));
+}
+
+code-preview:not(:defined)[viewport-widths]::before {
+  --code-preview-bar-preview: var(--code-preview-bar-height, 2.25rem);
+}
+
+/* Two ways to have a second pane, and so a tab strip, before the upgrade can say so: a
+   `manifest`, which brings the options panel, and a second fence, which is a second block
+   in the markup. */
+code-preview:not(:defined):is([manifest], :has(> :is(pre, .code-wrap) ~ :is(pre, .code-wrap)))::before {
+  --code-preview-bar-code: var(--code-preview-bar-height, 2.25rem);
 }
 
 /* `tab="options"` is the one case where upgrading *hides* something: the code block is
@@ -95,7 +113,7 @@ code-preview.is-tabbed > :has(> [data-pane][hidden]) {
 
 code-preview:not(:defined)[tab="options"]::before {
   height: calc(
-    var(--code-preview-height, 8rem) + var(--code-preview-bar-height, 2.25rem) +
+    var(--code-preview-height, 8rem) + var(--code-preview-bars, 0px) +
     var(--code-preview-options-height, 12rem)
   );
 }
@@ -135,21 +153,88 @@ code-preview .code-preview-viewport + .code-preview-bar {
   border-radius: 0;
 }
 
-/* Tabs first, widths last, whichever order the element built them in — and the widths
-   pushed to the far end, because they are about the preview above while the tabs are
-   about the panes below. */
-code-preview .code-preview-tabs {
+/* Each strip belongs to the box it sits against, so each holds only what acts on that
+   box: the widths above the preview they re-render, the tabs above the code they switch.
+   Both start at the leading edge — the actions below are the only thing pushed away. */
+code-preview :is(.code-preview-tabs, .code-preview-widths) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+/* Edit and Run, in the code block's bottom-left corner — on the block, because that is
+   what they act on, and opposite the top-right corner a docs theme has already put its
+   copy button in. The room they sit in is `--code-preview-hint-space`, reserved as bottom
+   padding on every editable block; see further down.
+
+   Absolute against the host and not against the `pre`, for the reason the hint is: a
+   copy-button script makes that block relative to position its own button, so this would
+   otherwise resolve against a different box depending on whether the page has one. */
+code-preview .code-preview-actions {
+  position: absolute;
+  inset-block-end: 0.375rem;
+  inset-inline-start: 0.5rem;
   display: flex;
   gap: 0.25rem;
   align-items: center;
 }
 
-code-preview .code-preview-widths {
-  display: flex;
-  flex-wrap: wrap;
+/* A glyph and the word for it. Sized to the type rather than to the icon, and to the same
+   type as the tabs and the keyboard hint — these sit on the sample, opposite the hint, and
+   three different chip heights along one edge of a code block is three for no reason. */
+code-preview .code-preview-action {
+  display: inline-flex;
   gap: 0.25rem;
   align-items: center;
-  margin-inline-start: auto;
+  box-sizing: border-box;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: calc(var(--code-preview-radius, var(--radius, 6px)) / 2);
+  background: none;
+  color: var(--code-preview-fg-muted, var(--fg-muted, #656d76));
+  font: 0.75rem/1.5 var(--code-preview-font-mono, var(--font-mono, ui-monospace, monospace));
+  cursor: pointer;
+}
+
+/* The icons are drawn at 16 because that is the size Octicons is hinted for, and scaled
+   here rather than in the markup so that a page setting a larger `--code-preview-font-mono`
+   size keeps the glyph in proportion to the word beside it. */
+code-preview .code-preview-action svg {
+  width: 1em;
+  height: 1em;
+  flex: none;
+}
+
+/* The buttons sit on the code block rather than in a strip of their own, so they need a
+   background: over a sample's own text a bare glyph is unreadable at the one moment it has
+   to be found. Nothing at rest would be cleaner, but a code block's bottom-left corner is
+   exactly where a long line runs to. */
+code-preview .code-preview-actions .code-preview-action {
+  border-color: var(--code-preview-border, var(--border, #d8d8d8));
+  background: var(--code-preview-bg, var(--bg, #fff));
+}
+
+/* On the js tab, and only there, Run stops being one of two equal things and becomes the
+   one the reader's edits are waiting on — so it fills in. Everywhere else it is a plain
+   icon button like Edit: a sample whose js is not on screen is one the reader is not
+   editing js in, and a permanently accented button in the corner of every code block on a
+   docs page is noise the page pays for on every sample.
+
+   Still no disabled state either way. Run re-runs from whatever the blocks say when it is
+   pressed, which is worth doing whether or not anything was edited. */
+code-preview.is-js-pane .code-preview-run {
+  border-color: var(--code-preview-accent, var(--accent, #0969da));
+  background: var(--code-preview-accent, var(--accent, #0969da));
+  color: var(--code-preview-bg, var(--bg, #fff));
+}
+
+/* Edit is a toggle, and pressed means the block is open. Same fill as Run's, because it is
+   the same statement — this is the button the current state belongs to. */
+code-preview .code-preview-edit[aria-pressed="true"] {
+  border-color: var(--code-preview-accent, var(--accent, #0969da));
+  background: var(--code-preview-accent, var(--accent, #0969da));
+  color: var(--code-preview-bg, var(--bg, #fff));
 }
 
 code-preview :is(.code-preview-width, .code-preview-tab) {
@@ -170,7 +255,7 @@ code-preview .code-preview-tab[aria-selected="true"] {
 
 /* The group summaries are in here too: a UA gives one a focus ring in some engines and
    not others, and every other thing in this element that takes focus shows the same one. */
-code-preview :is(.code-preview-width, .code-preview-tab, .code-preview-group > summary):focus-visible {
+code-preview :is(.code-preview-width, .code-preview-tab, .code-preview-action, .code-preview-group > summary):focus-visible {
   outline: 2px solid var(--code-preview-accent, var(--accent, #0969da));
   outline-offset: 1px;
 }
@@ -183,9 +268,30 @@ code-preview :is(.code-preview-width, .code-preview-tab, .code-preview-group > s
    Behind `hover: hover`, since a tap on a touch screen leaves the state stuck on until
    something else is tapped, and here that is a group summary the reader has just closed. */
 @media (hover: hover) {
-  code-preview :is(.code-preview-width, .code-preview-tab, .code-preview-group > summary):hover {
+  code-preview :is(.code-preview-width, .code-preview-tab, .code-preview-group > summary):hover,
+  code-preview .code-preview-action:hover {
     background: color-mix(in srgb, var(--code-preview-fg-muted, var(--fg-muted, #656d76)) 10%, transparent);
     color: var(--code-preview-fg, var(--fg, inherit));
+  }
+
+  /* Filled, so the wash above would only mud it — lifted instead, which is the gesture a
+     filled button makes everywhere else.
+
+     `white` and not `--code-preview-fg`, which is what this mixed toward before: the
+     foreground is the one token that is *defined* as flipping with the theme, so mixing
+     toward it darkened the button on a light page and lightened it on a dark one. Same
+     declaration, opposite gesture, decided by a page this sheet cannot see. An accent is
+     mid-tone in either theme and a hover is supposed to mean one thing, so it lifts in
+     both.
+
+     The color has to be restated, because the wash above sets one and would otherwise turn
+     the label dark on the one button whose label is the surface color. Both rules are
+     `(0,2,1)`, so this is order and not specificity — which is why the two live together
+     rather than the second sitting wherever it was first needed. */
+  code-preview.is-js-pane .code-preview-run:hover,
+  code-preview .code-preview-edit[aria-pressed="true"]:hover {
+    background: color-mix(in srgb, var(--code-preview-accent, var(--accent, #0969da)) 85%, #fff);
+    color: var(--code-preview-bg, var(--bg, #fff));
   }
 }
 
@@ -266,44 +372,72 @@ code-preview > .code-wrap > pre {
   border-top-right-radius: 0;
 }
 
-/* CodeJar sets `outline: none` inline on the block it takes over, so the focus ring
-   cannot live on the block itself.
+/* The bottom padding is the room the buttons and the keyboard hint sit in. Reserved on
+   every editable block rather than added when either appears: the hint appears on Edit,
+   and growing the block at that moment shifts the whole page down under the reader's
+   cursor. Held once, from upgrade, so opening the editor costs no layout.
 
-   The bottom padding is the room the keyboard hint sits in. Reserved on every editable
-   block rather than added when the hint appears: the hint appears on focus, and growing
-   the block at the moment someone clicks into it shifts the whole page down under their
-   cursor. Held once, from upgrade, so focusing costs nothing.
-
-   `--code-preview-hint-space` is the hint's own height (0.75rem at 1.5, plus its padding
-   and border) and the gap below it, rounded up. Set it to whatever the host's `pre`
-   padding already is if that is roomy enough, or to the block's normal padding to turn
-   the reservation off. */
+   `--code-preview-hint-space` is the taller of the two (the button, 1.75rem) plus the gap
+   below it, rounded up. Set it to whatever the host's `pre` padding already is if that is
+   roomy enough. */
 code-preview.is-editable > .code-wrap > pre,
 code-preview.is-editable > pre {
-  cursor: text;
   padding-block-end: var(--code-preview-hint-space, 2.25rem);
+}
+
+/* Only while the editor is open. CodeJar sets `outline: none` inline on the block it takes
+   over, so the focus ring cannot live on the block itself — it is the `pre` below that
+   carries it — and a text cursor over a block nobody has opened is the same lie the
+   `Editable` badge used to tell: it says "type here" to a pointer that cannot. */
+code-preview.is-editing > .code-wrap > pre,
+code-preview.is-editing > pre {
+  cursor: text;
 }
 
 /* `:focus-within` on the block, not on the element: a focus ring has to say which thing
    has focus, and hung off the host it lights the code block up for a width button, a tab
-   or anything inside the preview frame. */
-code-preview > .code-wrap > pre:focus-within,
-code-preview > pre:focus-within {
+   or anything inside the preview frame.
+
+   `:focus-visible` is the other half, and it is the `pre`'s own focus rather than the
+   editor's: the block is a tab stop even when it is not editable, so that Enter can open
+   it, and a keyboard user landing there has to be able to see where they are. Only for the
+   keyboard, though — a pointer user clicking a code block to select a line has not asked
+   to be told anything. That distinction is available here and was not before: a
+   contenteditable matches `:focus-visible` on a mouse click too, which is why this used to
+   be a class the script maintained. */
+code-preview.is-editing > .code-wrap > pre:focus-within,
+code-preview.is-editing > pre:focus-within,
+code-preview > .code-wrap > pre:focus-visible,
+code-preview > pre:focus-visible {
   box-shadow: 0 0 0 2px var(--code-preview-accent, var(--accent, #0969da));
 }
 
+/* A tab stop needs no outline of its own on top of the ring above, and a `pre` that a host
+   theme has given one would otherwise draw both. */
+code-preview > .code-wrap > pre:focus,
+code-preview > pre:focus {
+  outline: none;
+}
+
 /* The way out of the editor, said out loud. Tab indents in there, so it is not also the
-   way out — Esc hands it back (WCAG 2.1.2), and a keyboard user has to be told that.
+   way out — Esc closes the editor (WCAG 2.1.2), and a keyboard user has to be told that.
 
    `aria-describedby` covers a screen reader; this covers everyone else, and it is the
    same element so the two cannot come to say different things. Absolute, and hidden by
    visibility rather than `display: none`, because it must not move a line of the sample
-   when it appears and it must still be readable as a description while hidden. */
+   when it appears and it must still be readable as a description while hidden.
+
+   Opposite the buttons, sharing the strip they sit in. Capped at the width the two of them
+   take at the default type size, so a narrow column wraps the sentence rather than running
+   it under them. A cap and not a layout, because the two are positioned against opposite
+   edges and never share a box — and the sentence is only ever up while the reader is
+   looking at that corner anyway. */
 code-preview .code-preview-hint {
   position: absolute;
   inset-block-end: 0.375rem;
   inset-inline-end: 0.5rem;
   visibility: hidden;
+  max-inline-size: calc(100% - 9.5rem);
   margin: 0;
   padding: 0.125rem 0.5rem;
   border: 1px solid var(--code-preview-border, var(--border, #d8d8d8));
@@ -314,30 +448,51 @@ code-preview .code-preview-hint {
   pointer-events: none;
 }
 
-/* `.is-key-focus` is the element saying a Tab is what got focus here, or what has since
-   been pressed in here — advice about one key, shown to whoever presses it. A pointer
-   user can click back out, and someone typing has not hit the trap yet. Not
-   `:focus-visible`, which a contenteditable matches on a mouse click too. `:focus-within`
-   stays alongside it as the half that cannot go stale: the class is only ever removed by
-   a `focusout`. */
-code-preview.is-key-focus:has(pre:focus-within) > .code-preview-hint {
+/* Two moments, one for each half of the sentence: a keyboard user standing on the block,
+   who needs to know Enter opens it, and anyone with it open, who needs to know Esc closes
+   it. `:focus-visible` for the first — a pointer user clicking a code block to select a
+   line has not asked to be told anything. The pseudo-class can be trusted with that here
+   only because the block is not editable at rest: a contenteditable matches
+   `:focus-visible` on a mouse click too. */
+code-preview.is-editable:has(> :is(pre, .code-wrap > pre):focus-visible) > .code-preview-hint,
+code-preview.is-editing > .code-preview-hint {
   visibility: visible;
 }
 
-/* The hint belongs to the code block, but it cannot live inside it — a copy-button script
-   that reads the block's `innerText` would put this sentence on the clipboard. So it is a
-   child of the element, which means the tabs have to hide it themselves.
+/* Both halves of the sentence name a key, and a touch device has neither of them. Worse
+   than useless there: it is advice that cannot be taken, sitting over the sample, in the
+   corner a thumb is about to land in.
+
+   Nothing is lost by dropping it. The trap it warns about is a keyboard trap, so a device
+   with no keyboard cannot be in it, and the way out on touch is the Edit button — which is
+   filled in with the accent for exactly as long as there is something to get out of.
+
+   A media query and not a script: whether this page is being read with a keyboard is a
+   question about the device in front of the reader right now, and a class written from a
+   user-agent string at load time answers a different one — it cannot see a keyboard
+   attached to a tablet afterwards, and it is wrong about every tablet that had one all
+   along. `aria-describedby` is deliberately left alone, since a screen reader is a keyboard
+   whatever the pointer is doing. */
+@media (hover: none) and (pointer: coarse) {
+  code-preview .code-preview-hint {
+    display: none;
+  }
+}
+
+/* The buttons and the hint belong to the code block, but neither can live inside it — a
+   copy-button script that reads the block's `innerText` would put a button's name and this
+   sentence on the clipboard, and so would `sources()`, which reads that text as the sample.
+   So both are children of the element, which means the tabs have to hide them themselves.
 
    `display: none` and not the `visibility` above: that one is about a hint nobody needs
-   yet, this one is about a hint that is describing something not on screen. It is a live
-   region, so left in it announces the editor's Tab state on a tab that has no editor, and
-   an `aria-describedby` pointing into a pane the reader has switched away from.
+   yet, this one is about chrome describing something not on screen — an Edit button on the
+   options tab would open a block the reader is not looking at.
 
    `.is-code-pane` rather than naming the tabs: with a css and a js pane beside the markup
-   there are now three tabs the hint belongs on and one it does not, and which is which is
-   the element's to say — it is the only one that knows whether the pane showing has an
-   editor in it. */
-code-preview.is-tabbed:not(.is-code-pane) > .code-preview-hint {
+   there are now three tabs these belong on and one they do not, and which is which is the
+   element's to say — it is the only one that knows whether the pane showing has an editor
+   in it. */
+code-preview.is-tabbed:not(.is-code-pane) > :is(.code-preview-hint, .code-preview-actions) {
   display: none;
 }
 

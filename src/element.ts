@@ -86,42 +86,40 @@ const DEFAULT_HEAD = '<style>body{margin:0;padding:1rem}</style>'
 // Everything that can hold focus without being given a tab stop.
 const FOCUSABLE = 'a[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]'
 
-// A patch lands in the frame that is already loaded; a rebuild reloads it, so it
-// gets a longer leash — one reload per keystroke is miserable, and half-typed
-// markup is usually broken anyway.
+// A patch lands in the frame that is already loaded, so it can follow the typing. A
+// rebuild cannot follow anything: see `schedule` for why it waits to be asked.
 const PATCH_DELAY = 250
-const RELOAD_DELAY = 600
 
 // The hint each editor is described by needs an id of its own, and a docs page has as
 // many editors as it has samples.
 let uid = 0
 
-// The two things Tab can be doing in there, said the same way to a screen reader and to
-// the screen. Named rather than inlined because the second one has to be able to say
-// that the first one is over.
-const TAB_CAUGHT = 'Press Esc, then Tab, to leave the editor'
-const TAB_FREE = 'Tab now leaves the editor'
+// The way in and the way out, said the same way to a screen reader and to the screen. Two
+// states of one sentence, in one element: whichever is true is the one a description would
+// be read out of, and a reader only ever gets to the second by having acted on the first.
+//
+// Tab indents once the editor is open, so Escape closes it outright rather than handing
+// Tab back one press at a time — a block that is only editable because somebody asked has
+// a state to leave, and leaving it is a better answer than staying in a text field that
+// has quietly stopped catching Tab.
+const HINT_CLOSED = 'Press Enter to edit'
+const HINT_OPEN = 'Press Esc to stop editing'
 
-// Whether focus is arriving on a Tab. The hint is advice about one key, so it is for
-// someone who has pressed that key — a pointer user can click straight back out of the
-// editor, and someone typing in there has not hit the trap yet either. Any other key
-// clears it for the same reason a pointerdown does: the next focus move is not a Tab.
-//
-// Tracked rather than read off `:focus-visible`: a contenteditable matches that
-// pseudo-class on a mouse click too, because a ua assumes anything taking text input
-// wants its focus ring. Right for a ring, wrong for this.
-//
-// On the document and in capture, because the keypress that moves focus into an editor
-// lands on whatever had focus before it — which is not this element. Per document, so a
-// sample inside an iframe is watched too, and a `WeakSet` so twenty editors on a page
-// still add one pair of listeners each.
-let tabIntent = false
-const watched = new WeakSet<Document>()
-function watchIntent(doc: Document): void {
-  if (watched.has(doc)) return
-  watched.add(doc)
-  doc.addEventListener('keydown', (event) => { tabIntent = event.key === 'Tab' }, true)
-  doc.addEventListener('pointerdown', () => { tabIntent = false }, true)
+// Escape is the way out of the editor; the other two apply what is pending. Both are
+// always real in an editor — with nothing waiting they are a no-op rather than a lie —
+// so unlike the Run button they are claimed for every editable block.
+const EDITOR_KEYS = 'Escape Control+Enter Meta+Enter'
+
+// Octicons at 16, the set the surrounding docs themes already draw from — buttons this
+// element adds beside a theme's own copy button should not be a second visual language.
+// Inline rather than a sprite or a font: the element is one script and one stylesheet,
+// and an icon that arrives over the network is an icon that arrives late.
+const ICON = {
+  edit: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"></path></svg>',
+  // A bare play triangle, drawn here rather than taken from the set: Octicons has no play
+  // glyph, and `triangle-right` is a disclosure arrow — sized for the end of a summary
+  // line, not for a button of its own, where it reads as a quarter of the box.
+  run: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M5 2.75 13 8l-8 5.25Z"></path></svg>'
 }
 
 const list = (value: string | null): string[] => (value ?? '').split(/\s+/).filter(Boolean)
@@ -257,6 +255,10 @@ interface Pane {
   code?: HTMLElement
   language?: string
   jar?: ReturnType<typeof CodeJar>
+  // The `contenteditable` value CodeJar chose for this block, taken off it once and then
+  // taken away — see `attachEditors`. Its presence is also how "this pane has an editor
+  // waiting behind the Edit button" is asked about without re-running `editable`.
+  editMode?: string
   // What the fence said about itself, read once when the pane is registered rather than
   // off the block on demand: a highlighter rewrites `className` wholesale — hljs does —
   // so a `no-edit` written as a class is gone by the second time anyone asks.
@@ -306,9 +308,28 @@ export class CodePreview extends HTMLElement {
   private resize?: ResizeObserver
   private theme?: MutationObserver
   private timer?: ReturnType<typeof setTimeout>
-  // The keyboard hint, once there is an editor to hint about. Kept because its text is
-  // the one thing that changes when Escape releases Tab.
+  // The keyboard hint, once there is an editor to hint about. Kept for its id, which is
+  // what an open editor's `aria-describedby` points at.
   private hint?: HTMLElement
+  // The strip above the code — the tabs', and only the tabs'. Separate from `bar`, which
+  // is the preview's: these belong to the code, so they sit against it.
+  private codeStrip?: HTMLElement
+  // The buttons in the code block's bottom corner. Not in the strip above: they act on the
+  // block, so they sit on it, and the corner is where a docs theme has already taught
+  // readers to look for a control belonging to a code block.
+  private actions?: HTMLElement
+  private edit?: HTMLButtonElement
+  // Whether `buildActions` has had its turn. A flag rather than a look at what it built,
+  // because `no-actions` can leave it having built nothing, and "nothing" is not a state
+  // the dom can be asked about.
+  private madeActions = false
+  // The pane currently open for editing, and the whole of that state: at most one at a
+  // time, since Edit acts on the block that is showing and switching tabs closes it.
+  private editing?: Pane
+  // The rebuild button, once this sample is one that can need it. Built on demand rather
+  // than with Edit, because whether a sample runs anything is a question about its text,
+  // and its text is edited — see `buildRun`.
+  private run?: HTMLButtonElement
   // Has the frame loaded a document of ours? Nothing may be patched before it has.
   private loaded = false
   // Pending measure, so a burst of resizes measures once.
@@ -344,6 +365,7 @@ export class CodePreview extends HTMLElement {
     if (this.frame) {
       this.watchTheme()
       this.attachEditors()
+      this.buildActions()
       return
     }
     this.collectPanes()
@@ -391,6 +413,11 @@ export class CodePreview extends HTMLElement {
     if (widths.length) this.buildBar(widths)
 
     this.attachEditors()
+    // After the editors, which is what decides whether there is anything for these to act
+    // on — and after `buildRun` has had its chance to say this sample runs something, so
+    // that the pair is built in one go rather than Run arriving on its own and Edit
+    // inserting itself in front of it.
+    this.buildActions()
     // A block that arrived plain — hand-written markup rather than a fence some site
     // generator already highlighted — gets highlighted here. Blocks that came
     // pre-highlighted keep exactly what they have: re-running hljs is work for an
@@ -505,9 +532,9 @@ export class CodePreview extends HTMLElement {
       tablist.setAttribute('role', 'tablist')
       tablist.setAttribute('aria-label', 'Sample')
       tablist.addEventListener('keydown', this.onTabKey)
-      // Prepended, so the tabs sit at the start of the bar whether or not
-      // `viewport-widths` has already put its buttons in it.
-      this.toolbar.prepend(tablist)
+      // Prepended, so the tabs sit at the start of the strip whether or not the action
+      // buttons have already been put in it.
+      this.codeBar.prepend(tablist)
       this.tablist = tablist
       // What the stylesheet keys the hiding off, so that it does not depend on this
       // script having found the right box to put `hidden` on — a copy-button script that
@@ -551,6 +578,16 @@ export class CodePreview extends HTMLElement {
     if (this.panes.size < 2) return
     const current = this.pane
 
+    // An editor about to be hidden is closed first. Left open it is a text field nobody can
+    // see, holding focus behind a collapsed pane and pointing `aria-describedby` at a hint
+    // about a block that is not on screen — and the reader's way out of it, the Edit
+    // button, has by then switched to meaning the pane they moved to.
+    //
+    // Before the focus handling below, and not after: `exitEdit` puts focus on the Edit
+    // button, which is a child of the host and not of any panel, so the loop that follows
+    // correctly finds nothing left to rescue.
+    if (this.editing && this.editing.name !== current) this.exitEdit()
+
     // Focus cannot be left in the pane about to be hidden. Hiding the element focus is in
     // drops it on the body, and a keyboard user's next Tab starts again from the top of
     // the page — for a screen reader that is the whole document between them and the
@@ -577,13 +614,18 @@ export class CodePreview extends HTMLElement {
     }
 
     // Whether what is showing is an *editable* code block. The stylesheet needs the answer
-    // for the editor's keyboard hint — which describes an editor, and so has no business
-    // being on screen on a tab that has none — and only this side knows it. An editor and
-    // not merely `code`, because a pane `no-edit` names has no more editor in it than the
-    // options panel does, and the hint is a live region: left on, it announces Tab advice
-    // about a block the reader cannot type into.
-    const showing = this.panes.get(current)
-    this.classList.toggle('is-code-pane', !!showing && this.editable(showing))
+    // for the buttons and the keyboard hint — both describe an editor, and so have no
+    // business sitting on a block that has none — and only this side knows it. An editor
+    // and not merely `code`, because a pane `no-edit` names has no more editor in it than
+    // the options panel does, and an Edit button on it would open the markup instead,
+    // which is not the block the reader is looking at.
+    this.classList.toggle('is-code-pane', !!this.panes.get(current)?.editMode)
+
+    // Whether the reader is looking at the js. The stylesheet fills the Run button in
+    // while they are: on that tab it is the button their edits are waiting on, and on
+    // every other tab it is one of two equal things they might do next. The pane's
+    // name and not the fence's language, because the name is the normalised one.
+    this.classList.toggle('is-js-pane', current === 'js')
   }
 
   // Automatic activation, which is what the APG asks for wherever showing a panel costs
@@ -608,9 +650,18 @@ export class CodePreview extends HTMLElement {
     tabs[to].click()
   }
 
-  // The strip above the preview, made on demand and shared. Whatever ends up in it —
-  // the width buttons below, the options panel's tab list, or both — it stays one box,
-  // so there is one border, one set of top corners and one reservation to hold room for.
+  // Two strips, and which one a control belongs in is decided by what it acts on rather
+  // than by what fits. The widths re-render the preview, so they sit above the preview.
+  // The tabs choose which block is showing, so they sit against the code — above it, where
+  // a tab strip has to be to read as its label. Edit and Run are in neither: they act on
+  // the block itself, so they sit on it, in its bottom corner.
+  //
+  // One `<div>` each, both `.code-preview-bar`: the stylesheet tells them apart by which
+  // side of the viewport they are on, which is also the only thing that differs about
+  // them — a bar above the preview owns the widget's top corners, and one below it is a
+  // seam between two boxes.
+
+  // The preview's strip. Kept as `toolbar`, the name it is documented under.
   get toolbar(): HTMLElement {
     if (!this.bar) {
       const bar = document.createElement('div')
@@ -619,6 +670,20 @@ export class CodePreview extends HTMLElement {
       this.bar = bar
     }
     return this.bar
+  }
+
+  // The code's strip. After the viewport if there is one — the panes follow it, so this
+  // lands between the preview and the block it belongs to — and otherwise at the front,
+  // which is the same place for an element whose preview has not been built yet.
+  get codeBar(): HTMLElement {
+    if (!this.codeStrip) {
+      const bar = document.createElement('div')
+      bar.className = 'code-preview-bar'
+      if (this.viewport) this.viewport.after(bar)
+      else this.prepend(bar)
+      this.codeStrip = bar
+    }
+    return this.codeStrip
   }
 
   // A row of widths to render at. `role="group"` with a label rather than a
@@ -672,9 +737,14 @@ export class CodePreview extends HTMLElement {
     this.theme?.disconnect()
     if (this.raf) cancelAnimationFrame(this.raf)
     if (this.timer) clearTimeout(this.timer)
+    // Closed rather than left open across the move: `attachEditors` builds new jars on the
+    // way back in, and an editor whose jar has been destroyed under it is a block still
+    // carrying `contenteditable` and a `role` with nothing listening behind either.
+    this.exitEdit()
     for (const pane of this.panes.values()) {
       pane.jar?.destroy()
       pane.jar = undefined
+      pane.editMode = undefined
     }
     // The frame and the code block survive — they are dom, and this element may be
     // going straight back in. What does not survive is the loaded document: moving an
@@ -702,6 +772,10 @@ export class CodePreview extends HTMLElement {
   // itself — which is the same `schedule` the editor is wired to — so the write, the
   // color and the preview all follow from the one call. Without a jar (`no-edit`)
   // there is nothing listening, so all three are done by hand.
+  //
+  // Either way it is scheduled again, forced: the one `updateCode` triggered came in as
+  // typing and would have been held back in a sample that reloads. Nobody typed this —
+  // the reader turned a knob, which is the asking that `schedule` holds out for.
   set source(src: string) {
     const pane = this.panes.get('code')
     if (!pane?.code || src === this.source) return
@@ -710,8 +784,8 @@ export class CodePreview extends HTMLElement {
     } else {
       pane.code.textContent = src
       this.highlight(pane.code, pane.language)
-      this.schedule()
     }
+    this.schedule(true)
   }
 
   // The box a tab hides: the `<pre>`, or the `.code-wrap` a copy-button script wrapped
@@ -785,6 +859,11 @@ export class CodePreview extends HTMLElement {
     if (!frame) return
     const next = this.sources()
     const last = this.rendered
+    // CodeJar reports an update on every keyup, not only the ones that changed something —
+    // Escape, Tab, the arrows and every modifier arrive saying the same text they said
+    // before, and rendering that reloads the document for a sample that did not move.
+    // `runNow` clears `rendered` to get past this on purpose: Run is allowed to re-run
+    // something unchanged, because that is what it is for.
     if (last && last.html === next.html && last.css === next.css && last.js === next.js) return
     this.rendered = next
     delete this.dataset.error
@@ -848,8 +927,24 @@ export class CodePreview extends HTMLElement {
   // the patch's short leash, which is the one-reload-per-keystroke this list exists to
   // prevent.
   private reloads(next: Sources): boolean {
+    return this.runs(next) || isDocument(next.html)
+  }
+
+  // Whether applying this edit would execute code. The narrower question, and the one the
+  // Run button is about: markup and css are inert, so they are applied as they are typed,
+  // and this is everything that is not.
+  //
+  // An inline `<script>` counts even though it was typed in the markup pane — it is js,
+  // and a single-fence js demo is exactly where it lives. So does a `js` asset, because a
+  // library that already ran does not re-run against markup replacing what it initialised.
+  //
+  // `isDocument` is deliberately not here, though it is in `reloads`. A sample that owns
+  // its whole document can only ever be rebuilt, but rebuilding one that runs nothing
+  // costs a reparse and nothing else — so it keeps the live typing that markup gets, and
+  // a script in it is caught by `hasScript` like any other.
+  private runs(next: Sources): boolean {
     return this.assets.js.length > 0 || !!next.js.trim() || hasScript(next.html) ||
-      this.hasAttribute('reload') || isDocument(next.html)
+      this.hasAttribute('reload')
   }
 
   // Whether this edit is a write to the sample's stylesheet and nothing else. One
@@ -859,19 +954,231 @@ export class CodePreview extends HTMLElement {
   // `isDocument` is part of it because a sample that owns its whole document owns its
   // head, and there is no `<style>` of ours in there to write to.
   //
-  // `last` is a parameter because `render` has already overwritten `this.rendered` by
-  // the time it asks — it compares against the copy it took first.
-  private cssOnly(next: Sources, last = this.rendered): boolean {
+  // `last` is a required parameter and deliberately has no default. `render` has already
+  // overwritten `this.rendered` by the time it asks, so it compares against the copy it
+  // took first — and that copy is legitimately `undefined` on a first render or after
+  // `runNow` has cleared it. A default would swallow exactly those two cases and answer
+  // them with `this.rendered`, which by then is `next`: every field equal to itself, so
+  // `true`, so a rebuild silently downgraded to a stylesheet write.
+  private cssOnly(next: Sources, last: Sources | undefined): boolean {
     return !!last && this.loaded && last.html === next.html && last.js === next.js && !isDocument(next.html)
   }
 
-  private schedule(): void {
+  // Markup and css are inert, so they follow the typing on a short delay: the frame is
+  // patched, or — for a css edit, which is the one an author makes in bursts, and which
+  // is why `cssOnly` is asked first even in a sample that otherwise reloads — its
+  // stylesheet is simply written to.
+  //
+  // Js is the exception, and no delay makes it safe to apply unasked. Two reasons, and
+  // the second is the one that decided this:
+  //
+  //   - it reloads the document, which drops everything live in the sample — a script's
+  //     state, an open menu, the control a keyboard user had focused
+  //   - a srcdoc frame is same-origin, so it shares this page's event loop. Half-typed
+  //     js — `while (true` with the closing paren still to come — hangs the whole tab,
+  //     not just the preview. A longer debounce does not fix that; it only decides how
+  //     long the reader gets before it happens.
+  //
+  // So that one is offered rather than performed, and the Run button is how it is asked
+  // for. `force` is the options panel writing through `source`: turning a knob is already
+  // the reader asking, and a knob that did nothing until a second click would be a bug.
+  private schedule(force = false): void {
     if (this.timer) clearTimeout(this.timer)
     const next = this.sources()
-    // A css-only edit is neither a reload nor a patch, and it is the one an author makes
-    // in bursts — the shorter delay is the one that makes it feel live.
-    const delay = !this.cssOnly(next) && this.reloads(next) ? RELOAD_DELAY : PATCH_DELAY
-    this.timer = setTimeout(() => this.render(), delay)
+    if (!force && !this.cssOnly(next, this.rendered) && this.runs(next)) {
+      // Nothing is scheduled and nothing is remembered about the edit: the button is
+      // always live and always re-runs from whatever the blocks say when it is pressed,
+      // so there is no pending state for this to keep.
+      this.buildRun()
+      return
+    }
+    this.timer = setTimeout(() => this.render(), PATCH_DELAY)
+  }
+
+  // Run means run, and it means it every time. Not "apply the edit" — pressed twice on a
+  // sample nobody has touched it starts the demo over both times, which is most of what
+  // anyone wants from a js sample: the counter back to zero, the animation from the top.
+  // Forgetting what the frame holds is what lets `render` do the work it would otherwise
+  // skip as already applied.
+  //
+  // On a sample with nothing to re-run — a markup or css pane, reached by the keyboard
+  // shortcut — it means the smaller thing: stop waiting on the debounce and apply now.
+  //
+  // Keyed off what the sample is rather than off whether the button exists, because
+  // `no-actions="run"` can take the button away and leave the shortcut as the only way to
+  // apply a js edit. Without that, dropping the button would leave those edits with
+  // nowhere to go.
+  private runNow = (): void => {
+    if (this.timer) clearTimeout(this.timer)
+    if (this.runs(this.sources())) this.rendered = undefined
+    this.render()
+  }
+
+  // One button, made the same way every time: the glyph, then the word for it. Icon-only
+  // was a guess the reader had to hover to check, and these sit on the sample rather than
+  // in a toolbar with a shape to learn — a word costs two characters of width and takes the
+  // guessing away. It is also the accessible name, so there is no `aria-label` to drift out
+  // of step with what the button says, and no `title` repeating either of them.
+  //
+  // The svg stays `aria-hidden`: it is the label drawn twice, and a screen reader that
+  // picked it up would read it twice.
+  private action(name: string, label: string, icon: string, onClick: () => void): HTMLButtonElement {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = `code-preview-action code-preview-${name}`
+    button.innerHTML = icon
+    const text = document.createElement('span')
+    text.textContent = label
+    button.appendChild(text)
+    button.addEventListener('click', onClick)
+    this.actionGroup.appendChild(button)
+    return button
+  }
+
+  // The pair in the code block's bottom corner, in the order the reader reaches for them:
+  // get into the code, run the code. A child of the host rather than of the block, for the
+  // reason the keyboard hint is one — a copy-button script reading the block's `innerText`
+  // would otherwise put a button's accessible name on the clipboard, and `sources()` reads
+  // that same text as the sample itself.
+  private get actionGroup(): HTMLElement {
+    if (!this.actions) {
+      const actions = document.createElement('div')
+      actions.className = 'code-preview-actions'
+      // A group and not a toolbar, for the reason the widths are a group: these are plain
+      // buttons, and the richer role obliges arrow-key navigation they do not need.
+      actions.setAttribute('role', 'group')
+      actions.setAttribute('aria-label', 'Sample actions')
+      this.appendChild(actions)
+      this.actions = actions
+    }
+    return this.actions
+  }
+
+  // Both buttons belong to the editor and neither one is built without it. A locked sample
+  // is a code block on a docs page: the theme's own copy button is the whole of what it
+  // needs, and a preview that renders once and never changes has nothing to re-run.
+  //
+  // Nothing to build means specifically no `actionGroup`: reading that getter is what puts
+  // the box in the page, and an empty one is a reserved strip under every code block on the
+  // page for nothing.
+  private buildActions(): void {
+    if (this.madeActions) return
+    this.madeActions = true
+    if (!this.hasEditor || !this.allows('edit')) return
+    this.edit = this.action('edit', 'Edit', ICON.edit, this.toggleEdit)
+    // A toggle and not a one-way door: pressing it again is how a pointer user gets back
+    // out, since Escape is the keyboard's answer and a mouse has no Escape.
+    this.edit.setAttribute('aria-pressed', 'false')
+  }
+
+  // Whether any pane has an editor waiting behind the button. `editMode` and not
+  // `editable`, so this stays true to what was actually built — `attachEditors` runs first
+  // and is the one place that decision is made.
+  private get hasEditor(): boolean {
+    return [...this.panes.values()].some((pane) => pane.editMode)
+  }
+
+  // Whether the page asked for this button. `no-actions` is spelled the way `no-edit` is,
+  // because it is the same kind of decision and a second vocabulary for it would be one to
+  // learn for nothing: bare turns both buttons off, and given names to drop —
+  // `no-actions="run"` — it drops those and keeps the rest.
+  private allows(action: string): boolean {
+    const off = this.getAttribute('no-actions')
+    if (off === null) return true
+    const names = list(off.toLowerCase())
+    return names.length > 0 && !names.includes(action)
+  }
+
+  private toggleEdit = (): void => {
+    if (this.editing) this.exitEdit()
+    else this.enterEdit()
+  }
+
+  // Into the code, from wherever the reader is. The pane already showing wins if it can be
+  // typed into — Edit on the CSS tab means that stylesheet, not the markup — and otherwise
+  // this switches to the first pane that can be, which is what makes it the way back from
+  // the options panel.
+  //
+  // Everything a text field needs is put on the block here rather than at upgrade, because
+  // until this moment the block is not one: a `role="textbox"` on something that takes no
+  // keystrokes is a promise to a screen reader that the page cannot keep.
+  private enterEdit(): void {
+    const showing = this.panes.get(this.pane)
+    const target = showing?.editMode
+      ? showing
+      : [...this.panes.values()].find((pane) => pane.editMode)
+    if (!target?.code || !target.editMode) return
+    if (this.pane !== target.name) this.setAttribute('tab', target.name)
+    const code = target.code
+    this.editing = target
+    code.setAttribute('contenteditable', target.editMode)
+    code.setAttribute('role', 'textbox')
+    // The default for a textbox is a single line, and a code sample is not that.
+    code.setAttribute('aria-multiline', 'true')
+    // The keys in here that are not keys anywhere else. A shortcut that exists only in a
+    // description is a shortcut nobody can look up; this is the field made for it.
+    code.setAttribute('aria-keyshortcuts', EDITOR_KEYS)
+    if (this.hint) {
+      code.setAttribute('aria-describedby', this.hint.id)
+      // The sentence flips with the state. A description is read when focus arrives and not
+      // again, and focus does arrive — on the block, which is a different element from the
+      // `pre` that was describing itself a moment ago — so each read gets the true half.
+      this.hint.textContent = HINT_OPEN
+    }
+    this.classList.add('is-editing')
+    this.edit?.setAttribute('aria-pressed', 'true')
+    code.focus()
+  }
+
+  // Back to a code block: not editable, not focusable, nothing announced about it. The
+  // sample is applied on the way out — closing the editor is the second way to ask for a
+  // run, the Run button being the first.
+  private exitEdit(): void {
+    const pane = this.editing
+    if (!pane?.code) return
+    const code = pane.code
+    // Asked before the attribute goes, since removing it is what makes the block stop
+    // being focusable — and a browser left with focus on a node that cannot hold it drops
+    // it on the body, which restarts a keyboard user's next Tab from the top of the page.
+    const inside = code.contains(this.ownerDocument.activeElement)
+    this.editing = undefined
+    for (const name of ['contenteditable', 'role', 'aria-multiline', 'aria-keyshortcuts', 'aria-describedby']) {
+      code.removeAttribute(name)
+    }
+    this.classList.remove('is-editing')
+    this.edit?.setAttribute('aria-pressed', 'false')
+    if (this.hint) this.hint.textContent = HINT_CLOSED
+    // Back to the `pre`, which is a tab stop again the moment the editor is off the block
+    // inside it — the reader carries on from where they were rather than from wherever a
+    // button happens to sit, and Enter from there opens it again. Dropping focus is not an
+    // option: the body is where a keyboard user's next Tab starts the whole page over.
+    if (inside) (code.parentElement ?? this.edit)?.focus()
+    // Not `runNow`: that one clears `rendered` to force a rebuild of a sample that did not
+    // move, which is right for a button somebody pressed and wrong here — closing an
+    // editor nobody typed in would restart a demo that was mid-animation. `render` skips
+    // an unchanged sample on its own, so this is "apply whatever is different, if
+    // anything", and the pending debounce is flushed into it.
+    //
+    // Not on the way out of the dom, though — `disconnectedCallback` closes the editor
+    // too, and a frame that is being taken off the page has no business reloading first.
+    if (this.timer) clearTimeout(this.timer)
+    if (this.isConnected) this.render()
+  }
+
+  // Built the first time this sample is one that runs something — which is a question
+  // about its text, so it can become true at the keystroke that types `<script>` into a
+  // sample that had none. `attachEditors` builds it up front wherever the answer is
+  // already yes, so that the common case is a button that was always there rather than one
+  // appearing under the reader's hands.
+  //
+  // Appended after Edit, so the pair reads edit, run however late this one arrives.
+  private buildRun(): void {
+    if (this.run || !this.allows('run')) return
+    // Ordering rather than politeness: this can be the first thing to touch the group, and
+    // Edit belongs in front of it whenever there is one.
+    this.buildActions()
+    if (!this.hasEditor) return
+    this.run = this.action('run', 'Run', ICON.run, this.runNow)
   }
 
   private onFrameLoad(): void {
@@ -1032,118 +1339,131 @@ export class CodePreview extends HTMLElement {
   //
   // What it does not bring is any of the accessibility a text field gets for free: the
   // block it leaves behind is editable and nothing else — no role, no name, no way back
-  // out by keyboard. `describeEditor` and `releaseTab` are the two halves of that.
+  // out by keyboard. `enterEdit` and `onEditorKey` are the two halves of that.
+  //
+  // The jar is built here and then switched off, rather than built on the first Edit. Two
+  // reasons, and the second is the one that decided it: CodeJar writes `white-space:
+  // pre-wrap` and `overflow-wrap: break-word` inline on the block, so a jar made on demand
+  // would reflow the sample under the reader's cursor at the moment they press the button;
+  // and `set source` writes through the jar, which the options panel does to a sample
+  // nobody has opened.
   private attachEditors(): void {
     let any = false
     for (const pane of this.panes.values()) {
       if (pane.jar || !this.editable(pane)) continue
-      pane.jar = CodeJar(pane.code!, (element) => this.highlight(element, pane.language), { tab: '  ' })
+      const code = pane.code!
+      pane.jar = CodeJar(code, (element) => this.highlight(element, pane.language), { tab: '  ' })
       // The text is read back off the blocks, so which pane reported the keystroke does
       // not matter — only that one of them did.
       pane.jar.onUpdate(() => this.schedule())
-      this.describeEditor(pane)
+      // A code block on a docs page is something you Tab past, and one that is quietly
+      // editable is a text field in the middle of that — Tab indents once you are in it,
+      // so the way out is a key nobody has been told about yet. Editing is opt-in per
+      // block instead: the button says the block can take it, pressing the button is the
+      // asking, and the hint is only owed to someone who asked.
+      //
+      // CodeJar's own feature test picks `plaintext-only` or `true`; what it picked is
+      // remembered rather than re-derived here, and handed back by `enterEdit`.
+      pane.editMode = code.getAttribute('contenteditable') ?? 'true'
+      code.removeAttribute('contenteditable')
+      // The name the block carries whether or not it is open — the markup's own wins, since
+      // a docs page that has already labelled a sample knows better than a language name.
+      if (!code.hasAttribute('aria-label') && !code.hasAttribute('aria-labelledby')) {
+        code.setAttribute('aria-label', `${pane.language} sample`)
+      }
+      this.buildHint()
+      // The keyboard's half of the Edit button. Taking the block out of the tab order
+      // solved the trap, and would have left a keyboard user with nothing but a small icon
+      // in the corner to go and find; a tab stop on the block puts the affordance back
+      // where they already are. `Enter` from here is what the button does, and the block
+      // itself is what `aria-describedby` says it out of.
+      //
+      // The stop is on the `pre` and not on the block: the block is where the editor lands,
+      // and one element cannot be both the thing you Tab to and the thing that swallows
+      // Tab. The `pre` and not the pane's box either — with a copy-button script's
+      // `.code-wrap` around it those are two different elements, and the one that scrolls
+      // is this one. `showPane` then finds a `[tabindex]` inside the wrapper and leaves it
+      // alone, which is the same tab stop counted once.
+      const pre = code.parentElement
+      if (pre) {
+        pre.tabIndex = 0
+        pre.setAttribute('aria-describedby', this.hint!.id)
+      }
       any = true
     }
     if (!any) return
     // Capture, and on the host rather than the blocks: a listener added to a block
     // itself runs after CodeJar's, which has already called `preventDefault` on the
-    // Tab by then. Both are stable references, so reconnecting cannot double them up.
-    this.addEventListener('keydown', this.releaseTab, true)
-    this.addEventListener('focusin', this.showHint, true)
-    this.addEventListener('focusout', this.catchTab, true)
-    watchIntent(this.ownerDocument)
+    // Tab by then. A stable reference, so reconnecting cannot double it up.
+    this.addEventListener('keydown', this.onEditorKey, true)
     this.classList.add('is-editable')
+    // A sample that already runs something gets its button now rather than at the first
+    // keystroke: a button that appears under the reader's hands is one they did not ask
+    // for and may already be mid-click on something else.
+    if (this.runs(this.sources())) this.buildRun()
   }
 
-  // WCAG 2.1.2, no keyboard trap. Tab indents inside a code editor, which means it
-  // cannot also be the way out, and an editable block with no way out is the one
-  // accessibility failure this element could ship that has no workaround at all —
-  // a keyboard user who tabs in is stuck there for the rest of the page.
+  // WCAG 2.1.2, no keyboard trap. Tab indents inside a code editor, which means it cannot
+  // also be the way out, and an editable block with no way out is the one accessibility
+  // failure this element could ship that has no workaround at all.
   //
-  // Escape hands Tab back, the way every editor that keeps tab-to-indent does it, and
-  // leaving the block re-arms it, so coming back finds an editor that indents again.
-  // A rearm on blur rather than a second Escape toggling it: the failure mode of
-  // guessing wrong is being trapped again without being told, so the guess goes the
-  // other way every time.
-  //
-  // CodeJar's own option is flipped rather than the key intercepted, because Shift+Tab
-  // has to escape backwards too, and outdent is its handler and not ours.
-  private releaseTab = (event: KeyboardEvent): void => {
-    // Only a key pressed in an editor: the listener is on the host, so an Escape in the
-    // options panel or on a width button would otherwise flip the editor's Tab handling —
-    // and rewrite a hint about an editor the reader is not in.
+  // Escape closes the editor outright rather than handing Tab back one press at a time.
+  // The block is only editable because somebody pressed Edit, so there is a state to leave
+  // and leaving it is the honest answer: the block stops taking keystrokes, stops being a
+  // tab stop, and focus lands on the button that opened it — which is where Tab carries on
+  // from. Nothing to re-arm, and nothing to guess about on the way back in.
+  private onEditorKey = (event: KeyboardEvent): void => {
+    // Enter on the block itself, which is where Tab leaves a keyboard user — the same thing
+    // the Edit button does, offered where they already are. Only on the `pre`: once the
+    // editor is open Enter is a newline, and the block inside is what has focus then.
+    const showing = this.panes.get(this.pane)
+    if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey &&
+      showing?.editMode && event.target === showing.code?.parentElement) {
+      event.preventDefault()
+      this.enterEdit()
+      return
+    }
+
+    // Everything below is a key pressed in an editor: the listener is on the host, so an
+    // Escape in the options panel or on a width button would otherwise close an editor the
+    // reader is not in.
     const pane = this.paneAt(event.target)
     if (!pane) return
-    // Clicked in, then pressed Tab: the indent that just happened instead of a focus move
-    // is the trap itself, and that is the moment the advice is about. Late is the right
-    // time for the hint to turn up; never is not — and every other key is not the trap.
-    if (event.key === 'Tab') this.classList.add('is-key-focus')
+
+    // The other half of the Run button, for hands that are already on the keys — the
+    // combination every editor with a run button binds, and it works in every pane rather
+    // than only the ones that have one: in a markup or css pane it means "done typing,
+    // apply it now" instead.
+    //
+    // Claimed only where one of those two is real. With nothing to re-run and nothing on
+    // the debounce there is nothing for it to do, and a modified Enter is a key the page
+    // may have its own plans for — not one to swallow for a no-op.
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) &&
+      (this.timer || this.runs(this.sources()))) {
+      event.preventDefault()
+      this.runNow()
+      return
+    }
     if (event.key !== 'Escape' || event.defaultPrevented) return
-    pane.jar?.updateOptions({ catchTab: false })
-    // Pressing Escape is otherwise silent, and a key that appears to do nothing is a key
-    // nobody presses twice. The hint is already on screen, so saying it there costs a
-    // string and no layout.
-    if (this.hint) this.hint.textContent = TAB_FREE
+    event.preventDefault()
+    this.exitEdit()
   }
 
-  // The visible half of the hint, gated on how focus got here — a Tab, and nothing else.
-  // The `aria-describedby` is not gated with it: a screen reader is a keyboard, and the
-  // description is read on arrival either way.
-  private showHint = (event: FocusEvent): void => {
-    if (!this.paneAt(event.target)) return
-    this.classList.toggle('is-key-focus', tabIntent)
-  }
-
-  // Focus leaving anything in the element, which is a superset of focus leaving an
-  // editor — harmless, because a move within one fires the `focusin` above straight after.
-  // Every editor is re-armed and not only the one being left: they share the hint, so they
-  // have to agree about what it says.
-  private catchTab = (): void => {
-    this.classList.remove('is-key-focus')
-    for (const pane of this.panes.values()) pane.jar?.updateOptions({ catchTab: true })
-    if (this.hint) this.hint.textContent = TAB_CAUGHT
-  }
-
-  // What a screen reader is told this block is, and how to get back out of it.
+  // The WCAG 2.1.2 advisory, and it has to reach two audiences that need two different
+  // things: `aria-describedby` says it on focus for a screen reader, and the stylesheet
+  // shows the same element while the editor is open, because a sighted keyboard user is
+  // just as stuck in there and hears nothing.
   //
-  // `role="textbox"` because a contenteditable is exposed inconsistently without one,
-  // and it also makes the highlighter's spans presentational — which is right: the
-  // sample is its text, and the colors are decoration. `aria-multiline` because the
-  // default for a textbox is a single line, and a code sample is not that.
-  //
-  // The name is left alone if the markup brought one: a docs page that has already
-  // labelled the block knows what the sample is better than a language name does.
-  //
-  // The hint is the WCAG 2.1.2 advisory, and it has to reach two audiences that need
-  // two different things — `aria-describedby` says it on focus for a screen reader,
-  // and the stylesheet shows the same element while the block has focus, because a
-  // sighted keyboard user is just as stuck and hears nothing.
-  private describeEditor(pane: Pane): void {
-    const code = pane.code!
-    code.setAttribute('role', 'textbox')
-    code.setAttribute('aria-multiline', 'true')
-    // The one key in here that is not a key anywhere else. A shortcut that exists only in
-    // a description is a shortcut nobody can look up; this is the field made for it.
-    code.setAttribute('aria-keyshortcuts', 'Escape')
-    if (!code.hasAttribute('aria-label') && !code.hasAttribute('aria-labelledby')) {
-      code.setAttribute('aria-label', `Editable ${pane.language} sample`)
-    }
-    let hint = this.hint
-    if (!hint) {
-      hint = document.createElement('p')
-      hint.className = 'code-preview-hint'
-      hint.id = `code-preview-hint-${++uid}`
-      // A live region, because the text is not only a description — it changes when
-      // Escape releases Tab, and a description is read when focus arrives and never
-      // again. `status` rather than `aria-live` spelled out: same politeness, one
-      // attribute. It only ever announces while the editor has focus, which is the
-      // only time the stylesheet shows it and the only time it can change.
-      hint.setAttribute('role', 'status')
-      hint.textContent = TAB_CAUGHT
-      this.appendChild(hint)
-      this.hint = hint
-    }
-    code.setAttribute('aria-describedby', hint.id)
+  // One per element however many editable panes it has — they all say the same sentence,
+  // and it is the open editor that points at it.
+  private buildHint(): void {
+    if (this.hint) return
+    const hint = document.createElement('p')
+    hint.className = 'code-preview-hint'
+    hint.id = `code-preview-hint-${++uid}`
+    hint.textContent = HINT_CLOSED
+    this.appendChild(hint)
+    this.hint = hint
   }
 
   // Shared by the first paint and every keystroke after it. Looked up per call
