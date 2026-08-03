@@ -3,8 +3,10 @@
    Every color in code-preview.css is a `--code-preview-*` custom property that falls back
    to an unprefixed name before its default — `--code-preview-bg` to `--bg` to `#fff` — so
    a host page that already themes `--bg`, `--fg`, `--border` and friends themes the
-   element for free. This sheet is the smallest possible demonstration of that: it names
-   those seven, and nothing about the element at all.
+   element for free. This sheet is the smallest possible demonstration of that: the values
+   below are the docs theme's own, copied out of `css/prose.min.css`, and nothing here
+   names the element at all. The element in the frame comes out looking like the element
+   you are reading around it, which is the point — same tokens in, same block out.
 
    `theme-attribute="data-theme"` on the element is what mirrors the page's light/dark
    choice onto the frame's `<html>`, which is what the second block below reads. Without
@@ -14,29 +16,61 @@
 
 :root {
   --bg: #fff;
-  --fg: #1f2328;
-  --fg-muted: #656d76;
-  --border: #d0d7de;
-  --accent: #0969da;
-  --danger: #cf222e;
+  --bg-code: #f5f6f8;
+  --fg: #1c2024;
+  --fg-muted: #5b6570;
+  --border: #e3e6ea;
+  --accent: #7048e8;
+  --radius: 0.5rem;
+  --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
 
   color-scheme: light;
 }
 
 :root[data-theme="dark"] {
-  --bg: #161b22;
-  --fg: #e6edf3;
-  --fg-muted: #8b949e;
-  --border: #30363d;
-  --accent: #4493f8;
+  --bg: #16181d;
+  --bg-code: #1d2026;
+  --fg: #e4e7eb;
+  --fg-muted: #98a1ad;
+  --border: #2b2f36;
+  --accent: #9775fa;
+  /* The one token deliberately not the page's: the theme names no `--danger`, so the
+     element out there takes its default in both schemes — and that default is a
+     light-mode red, too dark to read on this background. */
   --danger: #ff7b72;
 
   color-scheme: dark;
 }
 
 /* The frame's default head is untouched, so `body{margin:0;padding:1rem}` still applies —
-   this only paints it. */
+   this only paints it, in the theme's body font and leading. */
 body {
   background: var(--bg);
   color: var(--fg);
+  font-family: var(--font-body);
+  line-height: 1.65;
+}
+
+/* The element styles its own chrome and leaves the code block to the page, which is why a
+   frame with only the tokens above renders a bare `<pre>` under a themed preview. These are
+   the theme's `.prose pre` and `.prose pre code` rules unscoped — the frame has no `.prose`
+   wrapper and no copy button, so the right-hand padding that reserves room for one is the
+   only value not carried over. `code-preview > pre { margin: 0 }` in the element's own
+   stylesheet still wins the margin, the same way it does on the page. */
+pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+pre code {
+  font-family: var(--font-mono);
+  background: none;
+  border: 0;
+  padding: 0;
 }

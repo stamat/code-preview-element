@@ -521,9 +521,13 @@ The sample below is a `<code-preview>`, and a real one: the frame loads the same
 and the same stylesheet this page does, so what is in there is the element rather than a
 picture of one. It links `code-preview-hljs.min.css` too, which this page does not — the
 frame is exactly the case that optional stylesheet exists for, a page with no syntax theme
-of its own. `self.css` is the other half of the same point: it names `--bg`, `--fg`,
-`--border` and four more, and the element inside picks all seven up without being told,
-because that is what its custom properties fall back to.
+of its own. [`self.css`](self.css) is the other half of the same point: it names `--bg`,
+`--fg`, `--border` and the rest of this theme's tokens, at this theme's own values, copied
+out of its stylesheet — and the element inside picks every one it reads up without being told, because
+that is what its custom properties fall back to. Which is why the block in there looks like
+the block around it. The last few lines of that file are the part the tokens cannot do: the
+element leaves the `<pre>` to its host, so the frame also needs the theme's code-block rule,
+or a themed preview would sit above an unstyled slab of text.
 
 Open the **Options** tab and every knob is this element's own documented surface, the two
 halves behaving as they did above and for the same reasons. `--code-preview-accent` and
@@ -583,7 +587,7 @@ English default rather than going blank. Click the button to see it.
 
 ```html
 <code-preview viewport-widths="320" style="--code-preview-height: 56px">
-  <pre><code class="language-html">&lt;button onclick="console.log('Bok!')"&gt;
+  <pre><code class="language-html">&lt;button onclick="console.log('Pozdrav!')"&gt;
   Pozdravi
 &lt;/button&gt;</code></pre>
 </code-preview>
