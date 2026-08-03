@@ -117,9 +117,22 @@ description: Live, editable HTML samples in an isolated iframe — the element d
   /* The filter emits this for H3s. None here yet — but without the rule the first one
      added would be indistinguishable from an H2. */
   .toc .toc-h3 a { padding-left: 1rem; }
+
+  /* The readme's shields, same three and in the same order. A flex row rather than
+     inline images, so the gap is a declaration instead of the whitespace between the
+     tags, and a wrapped second row keeps the gap too. `--radius` is 0.5rem and these
+     badges are 20px tall — the theme's image radius would round their corners into
+     the label text, so they keep the 3px shields.io draws them with. */
+  .badges { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .badges img { border-radius: 3px; }
 </style>
 
 <h1>&lt;code-preview&gt;</h1>
+<p class="badges">
+  <a href="https://www.npmjs.com/package/code-preview-element"><img src="https://img.shields.io/npm/v/code-preview-element" alt="npm version"></a>
+  <a href="https://github.com/stamat/code-preview-element/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/stamat/code-preview-element/ci.yml?branch=main&amp;label=ci" alt="ci"></a>
+  <a href="https://github.com/stamat/code-preview-element/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license MIT"></a>
+</p>
 <p>Edit any sample below — the preview above it follows as you type. The theme switcher
   in the topbar drives this page and, wherever a sample passes
   <code>theme-attribute="data-theme"</code>, the frame with it.</p>
