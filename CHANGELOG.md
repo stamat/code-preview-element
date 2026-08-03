@@ -16,6 +16,8 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-08-03
+
 ### Changed
 
 - **The console strip moved from under the preview to under the code block, and the error
