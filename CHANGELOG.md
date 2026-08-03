@@ -16,6 +16,20 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Safari: a preview could vibrate by one pixel, forever.** WebKit lays an iframe's
+  innards out a hair differently against each integral height it is given, so the height
+  `measure` wrote could move the next measurement across the `Math.ceil` boundary — and
+  the resize report that write fired triggered the next measure, so the two heights took
+  turns indefinitely. Two defenses, either sufficient: a height-only resize report from
+  the wrapper is now recognized as our own write coming back and does not re-measure
+  (the wrapper is watched for its *width*, which is what an emulated viewport scales
+  against), and the frame height write carries one pixel of dead-band — a real change is
+  bigger, and a preview one pixel short is invisible where a vibrating one is not.
+  Chrome and Firefox quantized the two measurements identically and never flapped;
+  nothing changes there.
+
 ## [2.0.0] - 2026-08-03
 
 ### Added

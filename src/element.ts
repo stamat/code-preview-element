@@ -362,6 +362,11 @@ export class CodePreview extends HTMLElement {
   private language = 'html'
   private uid = `code-preview-${++uid}`
   private resize?: ResizeObserver
+  // The wrapper width the last fit ran against. The wrapper is observed for its *width*
+  // — that is what an emulated viewport is scaled against — but writing the measured
+  // height onto it fires the same observer, and treating that echo as news is how a
+  // feedback loop starts; see `onFrameLoad`.
+  private vpWidth = -1
   private theme?: MutationObserver
   private timer?: ReturnType<typeof setTimeout>
   // The keyboard hint, once there is an editor to hint about. Kept for its id, which is
@@ -1392,7 +1397,24 @@ export class CodePreview extends HTMLElement {
     // emulated viewport is scaled against, so a window resize has to refit.
     this.resize?.disconnect()
     if (typeof ResizeObserver !== 'undefined') {
-      this.resize = new ResizeObserver(() => this.fit())
+      // The frame's document is always worth re-measuring — a report from it means the
+      // sample itself changed size. The wrapper is only worth it when its *width* moved:
+      // its height is what `measure` writes, so a height-only report is our own write
+      // coming back, and WebKit lays the frame's innards out a hair differently against
+      // each integral height — measure on the echo and the two heights take turns
+      // forever, a preview vibrating by one pixel. Reset to -1 so the first report
+      // after a load always measures.
+      this.vpWidth = -1
+      this.resize = new ResizeObserver((entries) => {
+        const news = entries.some((entry) => {
+          if (entry.target !== this.viewport) return true
+          const width = entry.contentRect.width
+          if (width === this.vpWidth) return false
+          this.vpWidth = width
+          return true
+        })
+        if (news) this.fit()
+      })
       this.resize.observe(doc.documentElement)
       if (this.viewport) this.resize.observe(this.viewport)
     }
@@ -1456,7 +1478,14 @@ export class CodePreview extends HTMLElement {
 
     // The frame gets the sample's whole height, unscaled, so it has nothing to scroll.
     const content = Math.ceil(Math.max(doc.documentElement.getBoundingClientRect().height, doc.body?.scrollHeight ?? 0))
-    frame.style.height = `${content}px`
+    // One pixel of dead-band, and it is the other half of the WebKit defense above: the
+    // write itself can move the next measurement across the `ceil` boundary — the inner
+    // layout is rounded against the integral height it is given — and a measure driven
+    // off the document's own resize report would flap between the two values forever. A
+    // real change is bigger than a pixel, and a preview one pixel short is invisible
+    // where a preview vibrating by one is not.
+    const current = parseFloat(frame.style.height) || 0
+    if (Math.abs(content - current) > 1) frame.style.height = `${content}px`
 
     // Read the frame's own box instead of recomputing `content * scale`: a
     // getBoundingClientRect already accounts for the transform, so the wrapper matches
