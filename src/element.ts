@@ -341,6 +341,50 @@ interface Pane {
 // costs, which is the only reason they travel together.
 interface Sources { html: string, css: string, js: string }
 
+/**
+ * A code block that renders itself: live, editable HTML samples in an isolated iframe.
+ *
+ * This block is the source of `dist/custom-elements.json` — `cem analyze` reads the tags
+ * below and nothing else, so an attribute added to the table in the README and not here
+ * is an attribute the options panel cannot offer. The prose above the class is still the
+ * explanation; this is the machine-readable half of it.
+ *
+ * `--code-preview-tail` is left out on purpose: it is written by the element, not read
+ * from the page, and a manifest entry would put a knob in the panel for a value the next
+ * measurement overwrites. ponytail: documented in the README instead of teaching the
+ * generator an `x-code-preview: { hidden: true }` it would need a plugin to carry.
+ *
+ * @customElement code-preview
+ *
+ * @attr {string} css - Whitespace-separated stylesheet urls for the frame, resolved against the host page.
+ * @attr {string} js - Whitespace-separated script urls for the frame, resolved against the host page.
+ * @attr {string} head - Extra head html, replacing the frame's default `body{margin:0;padding:1rem}`.
+ * @attr {string} backdrop - Id of a `<template>` on the host page, laid under every sample in this frame as scenery.
+ * @attr {string} theme-attribute - Attribute the host page's `[data-theme]` is mirrored onto, inside the frame.
+ * @attr {string} viewport-width - Render at this css width and scale it down to fit, so the sample's wider media queries apply.
+ * @attr {string} viewport-widths - Whitespace-separated widths to offer as buttons, which set `viewport-width`.
+ * @attr {string} manifest - Url of a `custom-elements.json`. Its presence is what turns the options panel on.
+ * @attr {string} manifest-tag - Which declaration in the manifest to drive, when the sample documents more than one element.
+ * @attr {'code' | 'css' | 'js' | 'options'} [tab=code] - Which pane is open, and the live state of it.
+ * @attr {boolean} no-edit - Render the preview, leave the code read-only. With a value, only the panes it names.
+ * @attr {boolean} no-actions - Drop the Edit and Run buttons. With a value, only the one it names.
+ * @attr {boolean} no-toast - No event name over the preview when the sample fires a documented event. The panel still counts it.
+ * @attr {boolean} no-console - No console strip under the code, and no console hook in the frame. Errors still show.
+ * @attr {boolean} no-shrink - Never size the preview below its tallest measurement, so a late re-measure cannot pull the page up.
+ * @attr {boolean} reload - Always rebuild the frame on edit, never patch it.
+ *
+ * @cssprop {<color>} [--code-preview-bg=#fff] - Bar, frame, options panel and controls. Falls back to `--bg`.
+ * @cssprop {<color>} [--code-preview-fg=inherit] - The selected tab, and a hovered one. Falls back to `--fg`.
+ * @cssprop {<color>} [--code-preview-fg-muted=#656d76] - Tabs, buttons, labels and the hint. Falls back to `--fg-muted`.
+ * @cssprop {<color>} [--code-preview-border=#d8d8d8] - Every border in the element. Falls back to `--border`.
+ * @cssprop {<color>} [--code-preview-accent=#0969da] - Focus rings, Edit while open, the tooltip, checkboxes and ranges. Falls back to `--accent`.
+ * @cssprop {<color>} [--code-preview-danger=#cf222e] - Console error lines and the transparent-swatch cross. Falls back to `--danger`.
+ * @cssprop {<length>} [--code-preview-radius=6px] - The outer corners; controls take half of it. Falls back to `--radius`.
+ * @cssprop [--code-preview-font-mono=ui-monospace, monospace] - Every bit of text in the element's chrome. Falls back to `--font-mono`.
+ * @cssprop {<length>} [--code-preview-height=8rem] - Height held for the preview before the frame has rendered, so it lands without a layout shift.
+ * @cssprop {<length>} [--code-preview-bar-height=2.25rem] - Height held for a toolbar strip, wherever tabs or a width switcher are coming.
+ * @cssprop {<length>} [--code-preview-options-height=12rem] - Floor held for the options panel under `tab="options"`, where upgrading hides the code block.
+ */
 export class CodePreview extends HTMLElement {
   // The width buttons write `viewport-width` and the tabs write `tab`, and this is
   // what makes that enough: the attribute is the state, so a click, a script and a

@@ -75,6 +75,22 @@ shows up in a function signature.
 
 ### Added
 
+- **The package ships a `custom-elements.json` of its own, at `dist/custom-elements.json`,
+  under the `customElements` key and as the `code-preview-element/custom-elements.json`
+  export.** The element has always read manifests; now it has
+  one. It is generated in the build by
+  [`@custom-elements-manifest/analyzer`](https://custom-elements-manifest.open-wc.org/analyzer/getting-started/)
+  from a JSDoc block on the `CodePreview` class — the same route the README asks of anyone
+  writing a sample for the options panel, so the advice and the practice are now the same
+  thing.
+
+  Nothing about the element changes. What it buys is on the tooling side: attribute and
+  custom-property autocomplete in editors that read the manifest, and the option of
+  pointing this element's own `manifest` at it. Every documented attribute and every
+  `--code-preview-*` custom property in the README is in there, with its type and default.
+  `--code-preview-tail` deliberately is not: the element writes it, the page does not, and
+  a knob for it would be overwritten by the next measurement.
+
 - **A sample can be several fences — markup, its css, its js — and each becomes a tab.**
   Until now the element took one `<pre><code>`, so a demo that needed a stylesheet or a
   script had to bury both inside the html as `<style>` and `<script>`: unreadable as a

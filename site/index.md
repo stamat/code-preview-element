@@ -505,6 +505,54 @@ out rather than shown as black.
 
 </code-preview>
 
+### Pointed at itself
+
+The manifest above is hand-written, because the element it documents is: `demo-badge` is
+a tag with no JavaScript behind it, so there is no JSDoc for a generator to read. This
+package's own manifest is not hand-written. `dist/custom-elements.json` is produced in the
+build by
+[`@custom-elements-manifest/analyzer`](https://custom-elements-manifest.open-wc.org/analyzer/getting-started/)
+from the JSDoc block on the element class, and shipped under the package's
+`customElements` key — the same route this page asks of everyone else. Which means the
+element can be handed itself and has to cope.
+
+The sample below is a `<code-preview>`, and a real one: the frame loads the same bundles
+and the same stylesheet this page does, so what is in there is the element rather than a
+picture of one. It links `code-preview-hljs.min.css` too, which this page does not — the
+frame is exactly the case that optional stylesheet exists for, a page with no syntax theme
+of its own. `self.css` is the other half of the same point: it names `--bg`, `--fg`,
+`--border` and four more, and the element inside picks all seven up without being told,
+because that is what its custom properties fall back to.
+
+Open the **Options** tab and every knob is this element's own documented surface, the two
+halves behaving as they did above and for the same reasons. `--code-preview-accent` and
+`--code-preview-radius` restyle the element in the frame and leave the one you are reading
+alone: a custom property is written into a stylesheet inside the frame, and the frame is
+where it stops. `no-console` is an attribute, so it is written into the code instead, onto
+the `<code-preview>` in the sample — tick it and the strip under the inner block stops
+taking the button's `console.log`; untick it and the next click is heard again. `manifest`
+is the one to try last. Point it at `custom-elements.json` and the element in the frame
+grows an Options tab of its own, because the options bundle is loaded in there as well.
+
+The button is three documents down: this page, the frame it built, and the frame the
+element in _that_ built.
+
+<code-preview css="code-preview.min.css code-preview-hljs.min.css self.css" js="code-preview-hljs.min.js code-preview-options.min.js" theme-attribute="data-theme" manifest="custom-elements.json" style="--code-preview-height: 260px">
+{# No `tab="options"` on this one, unlike its neighbour: the panel is 27 controls tall, and
+   reserving that much would open the section with a blank box the height of a screen and
+   hide the nesting, which is the thing to look at first. The code tab costs one click to
+   leave and the reservation stays a number worth measuring. #}
+
+```html
+<code-preview style="--code-preview-height: 56px">
+  <pre><code class="language-html">&lt;button onclick="console.log('Three documents down.')"&gt;
+  Log something
+&lt;/button&gt;</code></pre>
+</code-preview>
+```
+
+</code-preview>
+
 ## Questions
 
 <div class="faq">

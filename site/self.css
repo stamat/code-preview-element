@@ -1,0 +1,42 @@
+/* The page the self-preview's frame is.
+
+   Every color in code-preview.css is a `--code-preview-*` custom property that falls back
+   to an unprefixed name before its default — `--code-preview-bg` to `--bg` to `#fff` — so
+   a host page that already themes `--bg`, `--fg`, `--border` and friends themes the
+   element for free. This sheet is the smallest possible demonstration of that: it names
+   those seven, and nothing about the element at all.
+
+   `theme-attribute="data-theme"` on the element is what mirrors the page's light/dark
+   choice onto the frame's `<html>`, which is what the second block below reads. Without
+   it the element inside the frame would sit white on a dark page — the frame inherits no
+   stylesheet from its host, which is the isolation working as intended and the reason a
+   frame that wants a theme has to be given one. */
+
+:root {
+  --bg: #fff;
+  --fg: #1f2328;
+  --fg-muted: #656d76;
+  --border: #d0d7de;
+  --accent: #0969da;
+  --danger: #cf222e;
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #161b22;
+  --fg: #e6edf3;
+  --fg-muted: #8b949e;
+  --border: #30363d;
+  --accent: #4493f8;
+  --danger: #ff7b72;
+
+  color-scheme: dark;
+}
+
+/* The frame's default head is untouched, so `body{margin:0;padding:1rem}` still applies —
+   this only paints it. */
+body {
+  background: var(--bg);
+  color: var(--fg);
+}

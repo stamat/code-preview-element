@@ -34,8 +34,9 @@
       }
     }
   ],
+  "//exec": "The manifest is generated, not written — the element documents itself out of the JSDoc block on the class, the same way the README tells everyone else to. It lands in dist beside the bundles, which is where package.json's `customElements` key points. Run here so a watch rebuild regenerates it after a JSDoc edit; `npm run build` runs it once more first, because exec is the last thing poops does and the copy into _site needs the file before then.",
   "exec": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json && npm run manifest"
   },
   "styles": [
     {
@@ -53,14 +54,18 @@
   ],
   "copy": [
     {
-      "//": "The site loads no highlighter of its own, so it takes the bundle that brings one. No code-preview-hljs.css either — the docs theme colors the tokens, which is the case the separate stylesheet exists to allow.",
+      "//": "The site loads no highlighter of its own, so it takes the bundle that brings one. It does not link code-preview-hljs.min.css — the docs theme colors the tokens, which is the case the separate stylesheet exists to allow — but the file is copied anyway, because the self-preview's frame is the other case: a page with no theme of its own, which links it.",
+      "//self": "The element's own generated manifest, so the self-preview can point `manifest` at it. Everything else in this list a frame loads is here for the same reason: relative urls in `css`/`js` resolve against the host page, so the frame reaches these at the same paths the page does.",
       "in": [
         "dist/code-preview-hljs.min.js",
         "dist/code-preview-options.min.js",
         "dist/code-preview.min.css",
+        "dist/code-preview-hljs.min.css",
+        "dist/custom-elements.json",
         "site/sample.css",
         "site/sample.js",
-        "site/sample-manifest.json"
+        "site/sample-manifest.json",
+        "site/self.css"
       ],
       "out": "_site"
     },

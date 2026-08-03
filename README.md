@@ -134,10 +134,20 @@ import "code-preview-element/style"; // required css
 import "code-preview-element/theme"; // optional highlight.js token colors
 ```
 
-Import one of the first two, not both. The last two are stylesheets, so they need a
+Import one of the first two, not both. The next two are stylesheets, so they need a
 bundler that accepts a css import; `dist/code-preview.css` and
 `dist/code-preview-hljs.css` are the same files for anything that would rather link
 them.
+
+The element's [own manifest](#the-options-panel) is a fifth export, for a tool that
+reads one — or for pointing this element at itself:
+
+```js
+import manifest from "code-preview-element/custom-elements.json" with { type: "json" };
+```
+
+It is also the package's `customElements` key, which is where an editor looks without
+being told.
 
 ## How it works
 
@@ -601,6 +611,12 @@ and it already carries everything a panel needs. `cssProperties[].syntax` is the
 (`<color>`, `<time>`, `ease | linear`), which is exactly a control type — so the CSS side is
 already typed and nobody has to agree with us about how. Shipping one also buys editor
 autocomplete and a Storybook args table, which a format of ours would not.
+
+This package ships one of its own, on the same terms it asks of everyone else: the JSDoc
+block on `CodePreview` is the source, `cem analyze` runs in the build, and the result lands
+at `dist/custom-elements.json` as the `customElements` key. So the attributes and custom
+properties tabulated above are also readable by a tool — including this element, pointed at
+itself.
 
 **No manifest, no tabs.** Every page that does not use one renders byte-identically.
 

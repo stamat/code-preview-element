@@ -6,6 +6,7 @@
   "main": "dist/code-preview.js",
   "types": "dist/code-preview.d.ts",
   "style": "dist/code-preview.css",
+  "customElements": "dist/custom-elements.json",
   "exports": {
     ".": {
       "types": "./dist/code-preview.d.ts",
@@ -21,6 +22,7 @@
     },
     "./style": "./dist/code-preview.css",
     "./theme": "./dist/code-preview-hljs.css",
+    "./custom-elements.json": "./dist/custom-elements.json",
     "./dist/*": "./dist/*",
     "./src/*": "./src/*"
   },
@@ -51,8 +53,10 @@
   "license": "MIT",
   "scripts": {
     "dev": "poops",
-    "build": "poops -b",
-    "prepack": "poops -b",
+    "//manifest": "Ahead of poops in build and prepack, not inside it: poops runs `exec` last, and the copy into _site that hands this file to the demo page runs well before that — on a fresh checkout it would be copying something that does not exist yet. poops.json's exec runs it again so a watch rebuild picks up an edited JSDoc block.",
+    "manifest": "cem analyze --globs src/element.ts --outdir dist",
+    "build": "npm run manifest && poops -b",
+    "prepack": "npm run manifest && poops -b",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "npm run lint && npm run typecheck && node --test"
@@ -62,6 +66,7 @@
     "highlight.js": "^11.11.1"
   },
   "devDependencies": {
+    "@custom-elements-manifest/analyzer": "^0.11.0",
     "eslint": "^9.39.5",
     "jsdom": "^29.1.1",
     "neostandard": "^0.13.0",
