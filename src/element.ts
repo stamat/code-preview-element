@@ -153,16 +153,46 @@ const PATCH_DELAY = 250
 // many editors as it has samples.
 let uid = 0
 
-// The way in and the way out, said the same way to a screen reader and to the screen. Two
-// states of one sentence, in one element: whichever is true is the one a description would
-// be read out of, and a reader only ever gets to the second by having acted on the first.
+// Every string the element puts in front of a reader, in one object, so a page in another
+// language replaces the ones it cares about and inherits the rest. `HTML`, `CSS`, `JS` and
+// `480px` are not in here: they are the names of the things themselves, and a translation
+// of them would be a mistranslation.
+const STRINGS = {
+  // The way in and the way out, said the same way to a screen reader and to the screen. Two
+  // states of one sentence, in one element: whichever is true is the one a description would
+  // be read out of, and a reader only ever gets to the second by having acted on the first.
+  //
+  // Tab indents once the editor is open, so Escape closes it outright rather than handing
+  // Tab back one press at a time — a block that is only editable because somebody asked has
+  // a state to leave, and leaving it is a better answer than staying in a text field that
+  // has quietly stopped catching Tab.
+  hintClosed: 'Press Enter to edit',
+  hintOpen: 'Press Esc to stop editing',
+  tablist: 'Sample',
+  widths: 'Preview width',
+  fit: 'Fit',
+  actions: 'Sample actions',
+  edit: 'Edit',
+  run: 'Run',
+  console: 'Console',
+  scriptError: 'Script error',
+  sample: '{language} sample',
+  rendered: 'Rendered {label}',
+}
+
+export type Strings = Partial<typeof STRINGS>
+
+// `{name}` placeholders rather than two halves joined around a value, because word order is
+// the first thing a translation changes and a sentence assembled by concatenation can only
+// ever be built in English.
 //
-// Tab indents once the editor is open, so Escape closes it outright rather than handing
-// Tab back one press at a time — a block that is only editable because somebody asked has
-// a state to leave, and leaving it is a better answer than staying in a text field that
-// has quietly stopped catching Tab.
-const HINT_CLOSED = 'Press Enter to edit'
-const HINT_OPEN = 'Press Esc to stop editing'
+// Read at the moment the string is used and never cached in a const: a host assigns
+// `CodePreview.strings` after this module has been evaluated, so anything resolved at load
+// time would resolve to the default and stay there.
+function t(key: keyof typeof STRINGS, vars?: Record<string, string>): string {
+  const text = CodePreview.strings?.[key] ?? STRINGS[key]
+  return vars ? text.replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? '') : text
+}
 
 // Escape is the way out of the editor; the other two apply what is pending. Both are
 // always real in an editor — with nothing waiting they are a no-op rather than a lie —
@@ -403,6 +433,15 @@ export class CodePreview extends HTMLElement {
   // attribute is inert and the element renders byte-identically to before.
   static options?: (host: CodePreview) => void
 
+  // Set by the page, the way `highlighter` is, and for the same reason it is static: a
+  // document is written in one language, and a per-element attribute for each of a dozen
+  // strings would be a dozen attributes to learn in order to say once what the `<html lang>`
+  // already says. Partial on purpose — override the strings that matter, keep the rest.
+  //
+  // Where a block carries its own `aria-label` in the markup that still wins, here as
+  // everywhere else: a docs page that has already named a sample knows more than we do.
+  static strings?: Strings
+
   // "Re-read whatever you are showing." Called when `tab` changes and again whenever the
   // frame finishes loading — the panel reads both the sample's attributes and the frame's
   // computed values, and a document that has just arrived is new information about the
@@ -514,7 +553,7 @@ export class CodePreview extends HTMLElement {
     // Named per sample rather than one string for every frame: a docs page has as many
     // previews as it has samples, and a screen reader's frame list with twenty entries
     // saying the same thing distinguishes none of them.
-    frame.title = `Rendered ${this.labelOf(this.panes.get('code'))}`
+    frame.title = t('rendered', { label: this.labelOf(this.panes.get('code')) })
     // A demo far down a long page costs nothing until it is scrolled to. The frame
     // has no height until it loads, which is what the css min-height covers.
     frame.loading = 'lazy'
@@ -675,7 +714,7 @@ export class CodePreview extends HTMLElement {
       const tablist = document.createElement('div')
       tablist.className = 'code-preview-tabs'
       tablist.setAttribute('role', 'tablist')
-      tablist.setAttribute('aria-label', 'Sample')
+      tablist.setAttribute('aria-label', t('tablist'))
       tablist.addEventListener('keydown', this.onTabKey)
       // Prepended, so the tabs sit at the start of the strip whether or not the action
       // buttons have already been put in it.
@@ -847,7 +886,7 @@ export class CodePreview extends HTMLElement {
     const group = document.createElement('div')
     group.className = 'code-preview-widths'
     group.setAttribute('role', 'group')
-    group.setAttribute('aria-label', 'Preview width')
+    group.setAttribute('aria-label', t('widths'))
 
     const button = (label: string, width: string): HTMLButtonElement => {
       const element = document.createElement('button')
@@ -863,7 +902,7 @@ export class CodePreview extends HTMLElement {
       return element
     }
 
-    group.appendChild(button('Fit', ''))
+    group.appendChild(button(t('fit'), ''))
     for (const width of widths) group.appendChild(button(`${width}px`, String(width)))
     this.toolbar.appendChild(group)
     this.syncBar()
@@ -1262,7 +1301,7 @@ export class CodePreview extends HTMLElement {
       // A group and not a toolbar, for the reason the widths are a group: these are plain
       // buttons, and the richer role obliges arrow-key navigation they do not need.
       actions.setAttribute('role', 'group')
-      actions.setAttribute('aria-label', 'Sample actions')
+      actions.setAttribute('aria-label', t('actions'))
       this.appendChild(actions)
       this.actions = actions
     }
@@ -1280,7 +1319,7 @@ export class CodePreview extends HTMLElement {
     if (this.madeActions) return
     this.madeActions = true
     if (!this.hasEditor || !this.allows('edit')) return
-    this.edit = this.action('edit', 'Edit', ICON.edit, this.toggleEdit)
+    this.edit = this.action('edit', t('edit'), ICON.edit, this.toggleEdit)
     // A toggle and not a one-way door: pressing it again is how a pointer user gets back
     // out, since Escape is the keyboard's answer and a mouse has no Escape.
     this.edit.setAttribute('aria-pressed', 'false')
@@ -1349,7 +1388,7 @@ export class CodePreview extends HTMLElement {
       // The sentence flips with the state. A description is read when focus arrives and not
       // again, and focus does arrive — on the block, which is a different element from the
       // `pre` that was describing itself a moment ago — so each read gets the true half.
-      this.hint.textContent = HINT_OPEN
+      this.hint.textContent = t('hintOpen')
     }
     this.classList.add('is-editing')
     this.edit?.setAttribute('aria-pressed', 'true')
@@ -1377,7 +1416,7 @@ export class CodePreview extends HTMLElement {
     }
     this.classList.remove('is-editing')
     this.edit?.setAttribute('aria-pressed', 'false')
-    if (this.hint) this.hint.textContent = HINT_CLOSED
+    if (this.hint) this.hint.textContent = t('hintClosed')
     // Back to the `pre`, which is a tab stop again the moment the editor is off the block
     // inside it — the reader carries on from where they were rather than from wherever a
     // button happens to sit, and Enter from there opens it again. Dropping focus is not an
@@ -1408,7 +1447,7 @@ export class CodePreview extends HTMLElement {
     // Edit belongs in front of it whenever there is one.
     this.buildActions()
     if (!this.hasEditor) return
-    this.run = this.action('run', 'Run', ICON.run, this.runNow)
+    this.run = this.action('run', t('run'), ICON.run, this.runNow)
   }
 
   // The strip sits between the code block and the bottom of the element, which is what the
@@ -1446,7 +1485,7 @@ export class CodePreview extends HTMLElement {
   // assertively out of a region that is otherwise polite.
   private onFrameError = (event: Event): void => {
     const { message } = (event as CustomEvent<{ message?: unknown }>).detail ?? {}
-    this.logLine('error', typeof message === 'string' && message ? message : 'Script error', true)
+    this.logLine('error', typeof message === 'string' && message ? message : t('scriptError'), true)
   }
 
   // One line in the strip. Under the code rather than under the preview or in a pane of
@@ -1463,7 +1502,7 @@ export class CodePreview extends HTMLElement {
       const box = document.createElement('div')
       box.className = 'code-preview-console'
       box.setAttribute('role', 'log')
-      box.setAttribute('aria-label', 'Console')
+      box.setAttribute('aria-label', t('console'))
       box.hidden = true
       // Last in the stack, under every pane.
       this.appendChild(box)
@@ -1536,7 +1575,7 @@ export class CodePreview extends HTMLElement {
     // for one error is two lines in the console strip.
     if (!this.hooked) {
       this.frame?.contentWindow?.addEventListener('error', (event) => {
-        this.logLine('error', (event as ErrorEvent).message || 'Script error', true)
+        this.logLine('error', (event as ErrorEvent).message || t('scriptError'), true)
       })
     }
     this.fit()
@@ -1818,7 +1857,7 @@ export class CodePreview extends HTMLElement {
     const hint = document.createElement('p')
     hint.className = 'code-preview-hint'
     hint.id = `code-preview-hint-${++uid}`
-    hint.textContent = HINT_CLOSED
+    hint.textContent = t('hintClosed')
     this.appendChild(hint)
     this.hint = hint
   }
@@ -1827,7 +1866,7 @@ export class CodePreview extends HTMLElement {
   // title, the editor's label, the tab stop's. The markup's own `aria-label` wins, since
   // a docs page that has already labelled a sample knows better than a language name.
   private labelOf(pane?: Pane): string {
-    return pane?.code?.getAttribute('aria-label') ?? `${pane?.language ?? this.language} sample`
+    return pane?.code?.getAttribute('aria-label') ?? t('sample', { language: pane?.language ?? this.language })
   }
 
   // Shared by the first paint and every keystroke after it. Looked up per call

@@ -25,4 +25,5 @@ hljs.registerLanguage('js', javascript)
 // Before `define`, not after: an element already in the markup upgrades the instant
 // it is registered, and its first paint asks for this.
 CodePreview.highlighter = hljsHighlighter(hljs)
+CodePreview.strings = (globalThis as any).codePreviewStrings
 define()

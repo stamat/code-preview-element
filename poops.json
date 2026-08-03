@@ -65,7 +65,8 @@
         "site/sample.css",
         "site/sample.js",
         "site/sample-manifest.json",
-        "site/self.css"
+        "site/self.css",
+        "site/strings-sr.js"
       ],
       "out": "_site"
     },

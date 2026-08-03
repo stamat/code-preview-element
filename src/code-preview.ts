@@ -17,4 +17,12 @@ CodePreview.highlighter = (element, language) => {
   const hljs = (globalThis as any).hljs
   if (hljs) hljsHighlighter(hljs)(element, language)
 }
+
+// The one thing that cannot be read per call the way the highlighter is: a label is
+// written once, when the block is built, and a block already in the markup is built the
+// instant `define` runs on the line below. So the page states its language before the
+// bundle's script tag, in a global, and this is the line that picks it up — the same
+// route `hljs` takes in, for the same reason there is no other one available to a page
+// with no build step.
+CodePreview.strings = (globalThis as any).codePreviewStrings
 define()

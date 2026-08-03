@@ -227,8 +227,9 @@ Live-code components are not a new idea. What is specific here:
 - **Editing is asked for, not assumed.** A block is a code block until you press Edit;
   a page full of quietly editable blocks is a keyboard trap in the middle of the prose.
 - **Two script tags and no build step.** 7.5KB gzipped on a docs site that already ships
-  highlight.js, 23KB standalone. No service worker, no bundler config, no origin to serve
-  demo files from.
+  highlight.js — [CodeJar](https://github.com/antonmedv/codejar) for the editor is 2KB of
+  that — 23KB standalone, with highlight.js carried along. No service worker, no bundler
+  config, no origin to serve demo files from.
 
 ## Intended use
 
@@ -552,6 +553,46 @@ element in _that_ built.
 ```
 
 </code-preview>
+
+## In another language
+
+Twelve strings go in front of a reader — the two buttons, the keyboard hint in both of its
+states, and the accessible names on the tabs, the width switcher, the console and the block
+itself. `window.codePreviewStrings` replaces the ones a page cares about.
+
+The rule is that it has to be set **before** the element registers, and it is the one place
+this differs from the highlighter hook next door. A highlighter can be read per call because
+recoloring happens again on every keystroke; a label is written once, when the block is
+built, and a block already in the markup is built the instant the bundle calls `define`.
+There is no moment after that script tag left to say what language the page is in.
+
+So the demo is nested, the way the self-preview above is: the frame below loads
+[`strings-sr.js`](strings-sr.js) **first** in its `js` list and the element bundle behind it.
+Every url there is deferred and deferred scripts run in document order, which is what makes
+"first in the list" mean "before `define`" — the same guarantee an ordinary page gets from
+writing one `<script>` tag above another.
+
+Open the inner block and the hint, the buttons and the tab all speak Serbian. The console
+strip does not: `strings-sr.js` leaves `console` out, and what you leave out keeps its
+English default rather than going blank. Click the button to see it.
+
+<code-preview css="code-preview.min.css code-preview-hljs.min.css self.css" js="strings-sr.js code-preview-hljs.min.js" theme-attribute="data-theme" style="--code-preview-height: 300px">
+{# `strings-sr.js` first and the bundle second, which is the whole demonstration — swap the
+   two and the inner element registers before the strings exist, so the labels below come
+   out in English and nothing else changes. Worth trying by hand in the editor. #}
+
+```html
+<code-preview viewport-widths="320" style="--code-preview-height: 56px">
+  <pre><code class="language-html">&lt;button onclick="console.log('Bok!')"&gt;
+  Pozdravi
+&lt;/button&gt;</code></pre>
+</code-preview>
+```
+
+</code-preview>
+
+Markup still outranks all of it. A `<pre>` or `<code>` carrying its own `aria-label` keeps
+it — a docs page that has already named a sample knows more about it than either default.
 
 ## Questions
 

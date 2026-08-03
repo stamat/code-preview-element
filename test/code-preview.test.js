@@ -1709,3 +1709,58 @@ test('a fence can lock itself, as a class or an attribute, and highlighting cann
   element.setAttribute('tab', 'css')
   assert.equal(element.classList.contains('is-code-pane'), false, 'a locked pane claimed to hold an editor')
 })
+
+// Every string a reader is shown comes out of one object, and the page replaces the ones
+// it needs. The hard half is when: a label is written once, when the block is built, and a
+// block already in the markup is built the instant the bundle registers the element — so
+// the page has no moment after the script tag in which to say what language it is in. The
+// global read on the way past is that moment, and the hint below is the proof it lands
+// before the first paint rather than after it.
+test('a page states its language before the bundle, and every label is written in it', () => {
+  const element = mount('css="../../dist/lib.css"', `
+    <pre><code class="hljs language-html">&lt;p&gt;bok&lt;/p&gt;</code></pre>
+  `, {
+    script: plain,
+    setup: (win) => {
+      win.document.execCommand = () => true
+      win.codePreviewStrings = {
+        hintClosed: 'Pritisni Enter za izmenu',
+        hintOpen: 'Pritisni Esc za izlaz',
+        edit: 'Izmeni',
+        // The placeholder is last here and first in English, which is the reason it is a
+        // placeholder: a sentence joined out of two halves can only ever be built one way.
+        sample: 'primer koda: {language}'
+      }
+    }
+  })
+
+  const pre = element.querySelector('pre')
+  assert.equal(element.querySelector('.code-preview-hint').textContent, 'Pritisni Enter za izmenu')
+  assert.equal(pre.getAttribute('aria-label'), 'primer koda: html')
+  assert.equal(element.querySelector('.code-preview-edit span').textContent, 'Izmeni')
+
+  // Open it: the second half of the hint is the one nothing renders until it is asked for,
+  // so it proves the lookup happens at the moment the string is used and not at load.
+  element.querySelector('.code-preview-edit').click()
+  assert.equal(element.querySelector('.code-preview-hint').textContent, 'Pritisni Esc za izlaz')
+  assert.equal(element.querySelector('code').getAttribute('aria-label'), 'primer koda: html')
+})
+
+// Partial on purpose: a page translating three strings is not signing up to translate
+// twelve, and a key it never mentions has to keep working rather than render as blank or
+// as its own name. `viewport-widths` is here for the width group, which is one of them.
+test('an untranslated string keeps its default, and the markup still outranks both', () => {
+  const element = mount('css="../../dist/lib.css" viewport-widths="375" no-edit', `
+    <pre aria-label="Primer menija"><code class="hljs language-html">&lt;p&gt;bok&lt;/p&gt;</code></pre>
+  `, {
+    script: plain,
+    setup: (win) => { win.codePreviewStrings = { fit: 'Sve' } }
+  })
+
+  assert.equal(element.querySelector('.code-preview-width').textContent, 'Sve')
+  assert.equal(
+    element.querySelector('.code-preview-widths').getAttribute('aria-label'), 'Preview width',
+    'an untranslated key came back empty instead of falling back')
+  // A docs page that has already named this sample knows more than either of us.
+  assert.equal(element.querySelector('pre').getAttribute('aria-label'), 'Primer menija')
+})

@@ -118,9 +118,9 @@ Or skip the install and take the same two files from a CDN:
 ```html
 <link
   rel="stylesheet"
-  href="https://cdn.jsdelivr.net/npm/code-preview-element@1/dist/code-preview.min.css"
+  href="https://cdn.jsdelivr.net/npm/code-preview-element@3/dist/code-preview.min.css"
 />
-<script src="https://cdn.jsdelivr.net/npm/code-preview-element@1/dist/code-preview.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/code-preview-element@3/dist/code-preview.min.js"></script>
 ```
 
 From a bundler, import for the side effect — every entry defines the element itself,
@@ -746,6 +746,74 @@ The block arrives carrying `class="hljs language-<lang>"`, and the sample is its
 `CodePreview.highlighter` is the same hook one level down, typed as `Highlighter`, for
 code that registers the element itself rather than loading a bundle that does.
 
+## Language
+
+Twelve strings go in front of a reader — two button labels, the keyboard hint in both of
+its states, and the accessible names on the tabs, the width switcher, the console and the
+block itself. A page in another language replaces them in one object, stated **before**
+the bundle's script tag:
+
+```html
+<script>
+  window.codePreviewStrings = {
+    edit: "Izmeni",
+    run: "Pokreni",
+    hintClosed: "Pritisni Enter za izmenu",
+    hintOpen: "Pritisni Esc za izlaz",
+  };
+</script>
+<script src="node_modules/code-preview-element/dist/code-preview.min.js"></script>
+```
+
+Before, and not after, which is the one ordering rule here — and the one place this
+differs from `window.hljs`. A highlighter can be read per call because recoloring happens
+again on every keystroke; a label is written once, when the block is built, and a block
+already in the markup is built the instant the bundle registers the element. There is no
+moment after that script tag in which to say what language the page is in.
+
+Every key is optional. What you leave out keeps its English default, so translating the
+two buttons is a two-line change and not a commitment to the other ten:
+
+| Key                       | Default                     | Where it shows                                     |
+| ------------------------- | --------------------------- | -------------------------------------------------- |
+| `edit`                    | `Edit`                      | the button that opens the editor                   |
+| `run`                     | `Run`                       | the button that applies a js edit                  |
+| `hintClosed`              | `Press Enter to edit`       | under the block at rest                            |
+| `hintOpen`                | `Press Esc to stop editing`  | under the block while the editor is open          |
+| `fit`                     | `Fit`                       | the first width button                             |
+| `widths`                  | `Preview width`             | the width group's accessible name                  |
+| `tablist`                 | `Sample`                    | the tab strip's accessible name                    |
+| `actions`                 | `Sample actions`            | the button pair's accessible name                  |
+| `console`                 | `Console`                   | the log strip's accessible name                    |
+| `scriptError`             | `Script error`              | logged when a throw carries no message             |
+| `sample`                  | `{language} sample`         | the block's accessible name                        |
+| `rendered`                | `Rendered {label}`          | the frame's `title`                                |
+
+`{language}` and `{label}` are substituted where you put them, which is the reason they
+are placeholders rather than a value glued onto the end of a string — word order is the
+first thing a translation changes, and `primer koda: {language}` has to be sayable.
+
+`HTML`, `CSS`, `JS` and `480px` are deliberately not on the list: those are the names of
+the things themselves, and translating them would be getting them wrong.
+
+Markup still outranks all of it. A `<pre>` or `<code>` that carries its own `aria-label`
+keeps it, exactly as it does without any of this — a docs page that has already named a
+sample knows more about it than either default.
+
+From a bundler it is the same global and the same rule, with one wrinkle: `import` is
+hoisted, so an assignment written above it still runs after the bundle has registered the
+element. Either set it in a module imported first, or reach for the dynamic form:
+
+```js
+globalThis.codePreviewStrings = { edit: "Izmeni", run: "Pokreni" };
+await import("code-preview-element");
+```
+
+`CodePreview.strings` is the same object one level down, typed as `Strings`. Assigning it
+late is not useless — anything not yet built picks it up, and the buttons are built on
+demand — but it is not the way in, because the blocks already on the page are past the
+moment they read it.
+
 ## From JavaScript
 
 An element in the markup needs none of this — the bundles define it and it upgrades on
@@ -758,6 +826,7 @@ panel, a different highlighter or a test can use the same one:
 | `CodePreview`                          | the class, for `instanceof` and for the two statics below                      |
 | `CodePreview.highlighter`              | `(element, language) => void` — recolor a block, leave its text alone          |
 | `CodePreview.options`                  | `(host) => void`, called once per element with a `manifest`. The panel sets it |
+| `CodePreview.strings`                  | `Strings` — every reader-facing string, partial. See [Language](#language)     |
 | `hljsHighlighter(hljs)`                | builds a `Highlighter` from any hljs-shaped object                             |
 | `buildSrcdoc(html, { css, js, head })` | the frame document as a string, without an element                             |
 | `scaleToFit(available, emulated)`      | the scale factor `viewport-width` applies                                      |
