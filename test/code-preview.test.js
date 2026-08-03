@@ -122,6 +122,28 @@ test('a url with a quote in it cannot close the attribute it sits in', () => {
   assert.match(buildSrcdoc('<p>x</p>', { css: ['a".css'] }), /href="a&quot;\.css"/)
 })
 
+// The console hook has to be the first script in the document — an inline classic script
+// in head runs during the parse, ahead of every deferred url and of the body's module —
+// or a sample's top-level `console.log` runs before the console is rewired and is lost.
+test('the console hook is first in the frame, and no-console leaves it out', () => {
+  const doc = buildSrcdoc('<p>x</p>', { css: ['lib.css'], js: ['lib.js'] })
+  assert.match(doc, /code-preview-log/)
+  assert.ok(doc.indexOf('code-preview-log') < doc.indexOf('lib.css'), 'a stylesheet slipped ahead of the hook')
+  assert.ok(doc.indexOf('code-preview-log') < doc.indexOf('lib.js'))
+  assert.doesNotMatch(buildSrcdoc('<p>x</p>', { console: false }), /code-preview-log/)
+})
+
+// A screen reader picks its voice per document, and a frame that does not say is read in
+// the user's default — wrong exactly where the docs page said otherwise. The title is the
+// same claim at the document level that the iframe's `title` attribute makes at the frame.
+test('the frame document carries the host page language, and a title', () => {
+  assert.match(buildSrcdoc('<p>x</p>', { lang: 'sr' }), /^<!DOCTYPE html><html lang="sr">/)
+  // No language on the host is no claim in the frame — `lang=""` would be one.
+  assert.match(buildSrcdoc('<p>x</p>'), /^<!DOCTYPE html><html><head>/)
+  assert.match(buildSrcdoc('<p>x</p>'), /<title>Preview<\/title>/)
+  assert.match(buildSrcdoc('<p>x</p>', { lang: 'a"b' }), /lang="a&quot;b"/)
+})
+
 test('a sample that brings its own document owns its head', () => {
   const own = '<!DOCTYPE html><html><head><title>mine</title></head><body>hi</body></html>'
   assert.equal(buildSrcdoc(own, { css: ['x.css'] }), own)
@@ -288,7 +310,12 @@ test('the block is inert until opened, and Escape is the way back out', () => {
   assert.equal(code.getAttribute('contenteditable'), null, 'the block took keystrokes nobody asked for')
   assert.equal(code.getAttribute('role'), null, 'a read-only block was announced as a textbox')
   assert.equal(pre.getAttribute('tabindex'), '0', 'no way for a keyboard to reach the editor')
-  assert.match(code.getAttribute('aria-label'), /html/i)
+  // The name is the tab stop's, not the block's: `code` is a role that prohibits naming,
+  // so a label parked there permanently is a checker flag on every sample — the block
+  // gets its own back for exactly as long as it is a textbox, below.
+  assert.equal(code.getAttribute('aria-label'), null, 'a name on a role that prohibits one')
+  assert.equal(pre.getAttribute('role'), 'group', 'a focusable stop with no role to announce')
+  assert.match(pre.getAttribute('aria-label'), /html/i)
 
   // The advisory, said once to both audiences: `aria-describedby` for a screen reader, and
   // the same element shown by the stylesheet for everyone else. Two states of one sentence,
@@ -310,6 +337,7 @@ test('the block is inert until opened, and Escape is the way back out', () => {
   assert.ok(element.classList.contains('is-editing'))
   assert.equal(code.getAttribute('contenteditable'), 'true')
   assert.equal(code.getAttribute('role'), 'textbox')
+  assert.match(code.getAttribute('aria-label'), /html/i, 'a textbox with no name')
   assert.equal(code.getAttribute('aria-multiline'), 'true')
   // All three keys, in every editable pane: Escape closes the editor, and the Enter pair
   // applies whatever is waiting — the debounce in a markup or css pane, the Run button's
@@ -328,6 +356,7 @@ test('the block is inert until opened, and Escape is the way back out', () => {
   assert.equal(element.classList.contains('is-editing'), false, 'Escape left the editor open')
   assert.equal(code.getAttribute('contenteditable'), null)
   assert.equal(code.getAttribute('role'), null)
+  assert.equal(code.getAttribute('aria-label'), null, 'the name outlived the role that allowed it')
   assert.equal(code.getAttribute('aria-describedby'), null)
   assert.equal(pre.getAttribute('tabindex'), '0')
   assert.match(hint.textContent, /Press Enter/)
@@ -374,15 +403,13 @@ test('a keystroke that changed nothing does not reload the frame', async() => {
   assert.equal(writes, 0, 'an unchanged sample rebuilt the frame')
 })
 
-// The gate, and what the button does with it. Running js drops everything live in the
-// sample, and half-typed js in a same-origin srcdoc hangs this page's event loop along
-// with the frame's — no debounce makes that safe, so typing never triggers it.
-//
-// `reload` is the cheapest way to be a sample that runs something, and the only path jsdom
-// can be asked about at all: it renders no srcdoc, so the patch path writes into a
-// document that never held the sample.
-test('typing never runs the sample, and Run always does', async() => {
-  const element = mount('css="../../dist/lib.css" reload', undefined, {
+// The sample whose text is code being typed. Half-typed js in a same-origin srcdoc hangs
+// this page's event loop along with the frame's — no debounce makes that safe, so typing
+// never triggers it: the edit waits on Run.
+const SCRIPTED = '<pre><code class="hljs language-html">&lt;b&gt;hi&lt;/b&gt;&lt;script&gt;go()&lt;/script&gt;</code></pre>'
+
+test('typing never runs a sample carrying a script, and Run always does', async() => {
+  const element = mount('css="../../dist/lib.css"', SCRIPTED, {
     setup: (win) => { win.document.execCommand = () => true }
   })
   const win = element.ownerDocument.defaultView
@@ -393,6 +420,9 @@ test('typing never runs the sample, and Run always does', async() => {
   // Built with the first paint, not at the first keystroke: a button that turns up later
   // is one the reader did not ask for, under hands that may be mid-click on something else.
   assert.ok(run, 'a sample that can only be run shipped no way to run it')
+  // And the class the stylesheet shows it by: a lone fence carrying its own script is the
+  // js pane in everything but the strip.
+  assert.ok(element.classList.contains('is-js-pane'), 'the button is in the page but styled away')
   openEditor(element)
   assert.equal(code.getAttribute('aria-keyshortcuts'), 'Escape Control+Enter Meta+Enter')
 
@@ -400,7 +430,7 @@ test('typing never runs the sample, and Run always does', async() => {
   new win.MutationObserver((records) => { writes += records.length })
     .observe(frame, { attributes: true, attributeFilter: ['srcdoc'] })
 
-  code.textContent = '<b>bye</b>'
+  code.textContent = '<b>bye</b><script>go()</script>'
   code.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
   await new Promise((resolve) => setTimeout(resolve, 800))
 
@@ -416,6 +446,31 @@ test('typing never runs the sample, and Run always does', async() => {
   run.click()
   await Promise.resolve()
   assert.equal(writes, 2, 'Run declined to re-run an unchanged sample')
+})
+
+// The other half of the same rule. A `js` url or `reload` still costs a rebuild, but the
+// text being typed is inert markup — the js that re-runs comes from its own file,
+// complete and valid — so the edit follows the typing, and there is no button to find.
+test('markup edits in a sample that merely reloads follow the typing', async() => {
+  const element = mount('css="../../dist/lib.css" reload', undefined, {
+    setup: (win) => { win.document.execCommand = () => true }
+  })
+  const win = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
+
+  assert.equal(element.querySelector('.code-preview-run'), null,
+    'a Run button for edits that apply themselves')
+
+  const code = openEditor(element)
+  let writes = 0
+  new win.MutationObserver((records) => { writes += records.length })
+    .observe(frame, { attributes: true, attributeFilter: ['srcdoc'] })
+
+  code.textContent = '<b>bye</b>'
+  code.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
+  await new Promise((resolve) => setTimeout(resolve, 800))
+
+  assert.equal(writes, 1, 'the edit waited on a button that is not there')
 })
 
 // The other caller of the same path. A knob is not typing — the reader asking for the
@@ -478,6 +533,90 @@ test('a sample carrying its own script reloads the frame instead of patching it'
   assert.equal(await rebuilds('&lt;b&gt;hi&lt;/b&gt;', '<b>hi</b><p>the &lt;script&gt; tag</p>'), 0)
 })
 
+// A script error has two audiences and the banner now reaches both: `role="alert"` is
+// what makes its arrival something a screen reader announces — the reader who just typed
+// the edit is who the message is for — and the element (unlike the generated content it
+// replaced) holds text that can be selected and copied into a search.
+test('a script error is announced, and the next edit clears it', async() => {
+  const element = mount('css="../../dist/lib.css" reload no-edit')
+  const win = element.ownerDocument.defaultView
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  element.querySelector('iframe').contentWindow.dispatchEvent(
+    new win.ErrorEvent('error', { message: 'go is not defined' })
+  )
+  const banner = element.querySelector('.code-preview-error')
+  assert.ok(banner, 'no banner in the page')
+  assert.equal(banner.getAttribute('role'), 'alert')
+  assert.equal(banner.textContent, 'go is not defined')
+  assert.equal(banner.hidden, false)
+  // The attribute stays: the stylesheet keys the corner radii off it, and so may a host's.
+  assert.equal(element.dataset.error, 'go is not defined')
+
+  // The next applied edit starts clean — an error about text that is gone would be one
+  // the reader cannot act on.
+  element.source = '<b>bye</b>'
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  assert.equal(banner.hidden, true)
+  assert.equal(banner.textContent, '')
+  assert.equal(element.dataset.error, undefined)
+})
+
+// The strip is fed by the CustomEvent the frame's rewired console dispatches on the
+// iframe — dispatched here directly, since jsdom never executes a srcdoc. `role="log"`
+// is what makes each line something a screen reader hears without anything re-reading.
+test('console lines land in a strip under the preview, capped and levelled', async() => {
+  // `reload`, so the edit at the end rebuilds: a patched frame keeps its document and so
+  // keeps its log — only a new document starts the strip over.
+  const element = mount('css="../../dist/lib.css" reload no-edit')
+  const win = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  const log = (level, ...args) => frame.dispatchEvent(
+    new win.CustomEvent('code-preview-log', { detail: { level, args } })
+  )
+
+  log('log', 'hi', 42, { a: 1 }, null)
+  const box = element.querySelector('.code-preview-console')
+  assert.ok(box, 'no strip in the page')
+  assert.equal(box.getAttribute('role'), 'log')
+  assert.equal(box.getAttribute('aria-label'), 'Console')
+  assert.equal(box.hidden, false)
+  // Under the preview, above whatever else the stack holds.
+  assert.equal(element.querySelector('.code-preview-viewport').nextElementSibling, box)
+  // Strings print bare, the way a console prints them; the rest are said in one line.
+  assert.equal(box.firstElementChild.textContent, 'hi 42 {"a":1} null')
+
+  log('warn', 'careful')
+  log('error', 'broke')
+  const lines = [...box.children]
+  assert.ok(lines[1].classList.contains('is-warn'))
+  assert.ok(lines[2].classList.contains('is-error'))
+
+  // The cap: a demo that logs more than the strip holds is being profiled, and the
+  // browser's own console is where that reads.
+  for (let n = 0; n < 120; n++) log('log', `line ${n}`)
+  assert.equal(box.children.length, 100)
+  assert.equal(box.lastElementChild.textContent, 'line 119')
+
+  // A rebuild is a new document and a new run, so the strip starts over with it.
+  element.source = '<b>bye</b>'
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  assert.equal(box.children.length, 0)
+  assert.equal(box.hidden, true)
+})
+
+test('no-console: no hook in the frame, and a stray event feeds nothing', () => {
+  const element = mount('css="../../dist/lib.css" no-console no-edit')
+  const win = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
+
+  assert.doesNotMatch(frame.getAttribute('srcdoc'), /code-preview-log/)
+  frame.dispatchEvent(new win.CustomEvent('code-preview-log', { detail: { level: 'log', args: ['hi'] } }))
+  assert.equal(element.querySelector('.code-preview-console'), null)
+})
+
 // Neither strip is built without something to put in it: the code's holds the tabs and a
 // lone fence has none, and the preview's holds the widths. An empty one is a border and a
 // height reservation around nothing.
@@ -502,7 +641,7 @@ test('a locked sample gets no buttons at all', () => {
 // The word on the button is its accessible name, so there is nothing to keep in step: no
 // `aria-label` that can drift from what it says, and no `title` repeating either of them.
 test('both actions are named by the word on them, and the pair reads edit, run', () => {
-  const element = mount('css="../../dist/lib.css" reload', undefined, {
+  const element = mount('css="../../dist/lib.css"', SCRIPTED, {
     setup: (win) => { win.document.execCommand = () => true }
   })
   const buttons = [...element.querySelectorAll('.code-preview-actions button')]
@@ -522,26 +661,26 @@ test('both actions are named by the word on them, and the pair reads edit, run',
 
 // Spelled the way `no-edit` is: bare turns both off, named drops those.
 test('no-actions drops the buttons it names', () => {
-  const labels = (attributes) => [...mount(attributes, undefined, {
+  const labels = (attributes) => [...mount(attributes, SCRIPTED, {
     setup: (win) => { win.document.execCommand = () => true }
   }).querySelectorAll('.code-preview-actions button')].map((b) => b.textContent)
 
-  assert.deepEqual(labels('css="../../dist/lib.css" reload'), ['Edit', 'Run'])
-  assert.deepEqual(labels('css="../../dist/lib.css" reload no-actions="run"'), ['Edit'])
-  assert.deepEqual(labels('css="../../dist/lib.css" reload no-actions="edit"'), ['Run'])
+  assert.deepEqual(labels('css="../../dist/lib.css"'), ['Edit', 'Run'])
+  assert.deepEqual(labels('css="../../dist/lib.css" no-actions="run"'), ['Edit'])
+  assert.deepEqual(labels('css="../../dist/lib.css" no-actions="edit"'), ['Run'])
 
   // Bare: nothing to put in the group, so there is no group. The keyboard still has Enter
   // on the block — the shortcut is keyed to what the sample is, not to what was built.
-  const bare = mount('css="../../dist/lib.css" reload no-actions', undefined, {
+  const bare = mount('css="../../dist/lib.css" no-actions', SCRIPTED, {
     setup: (win) => { win.document.execCommand = () => true }
   })
   assert.equal(bare.querySelector('.code-preview-actions'), null)
 })
 
-// Run is a plain icon button like Edit, except on the tab whose edits it applies.
-// The class is the stylesheet's whole basis for filling it in, so it is what gets asserted
-// — the fill itself is a paint jsdom does not do.
-test('run reads as primary only while the js pane is showing', () => {
+// Run belongs to the pane whose edits wait on it and to no other. The class is the
+// stylesheet's whole basis for showing the button, so it is what gets asserted — the
+// hiding itself is a paint jsdom does not do.
+test('run is offered only while the js pane is showing', () => {
   const element = mount('css="../../dist/lib.css"', `
     <pre><code class="hljs language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>
     <pre><code class="hljs language-js">go()</code></pre>
@@ -557,10 +696,43 @@ test('run reads as primary only while the js pane is showing', () => {
   assert.equal(element.classList.contains('is-js-pane'), false)
 })
 
+// Both directions of the pane rule, in one sample: markup beside a js pane follows the
+// typing — the js that re-runs is the pane's own complete text, never the keystroke's —
+// while the js pane itself waits on Run.
+test('markup follows the typing beside a js pane, and the js pane waits', async() => {
+  const element = mount('css="../../dist/lib.css"', `
+    <pre><code class="hljs language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>
+    <pre><code class="hljs language-js">go()</code></pre>
+  `, { setup: (win) => { win.document.execCommand = () => true } })
+  const win = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
+  const [markup, js] = element.querySelectorAll('code')
+
+  let writes = 0
+  new win.MutationObserver((records) => { writes += records.length })
+    .observe(frame, { attributes: true, attributeFilter: ['srcdoc'] })
+
+  openEditor(element)
+  markup.textContent = '<b>bye</b>'
+  markup.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  assert.equal(writes, 1, 'a markup edit waited on Run')
+
+  element.setAttribute('tab', 'js')
+  js.textContent = 'go(2)'
+  js.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  assert.equal(writes, 1, 'typing js ran it')
+
+  element.querySelector('.code-preview-run').click()
+  await Promise.resolve()
+  assert.equal(writes, 2, 'Run did not apply the js edit')
+})
+
 // Dropping Run must not strand the edits it was the way to apply. The shortcut is keyed
 // off what the sample is rather than off the button, so it still works.
 test('the keyboard shortcut runs a js sample that has no Run button', async() => {
-  const element = mount('css="../../dist/lib.css" reload no-actions="run"', undefined, {
+  const element = mount('css="../../dist/lib.css" no-actions="run"', SCRIPTED, {
     setup: (win) => { win.document.execCommand = () => true }
   })
   const win = element.ownerDocument.defaultView
@@ -573,7 +745,7 @@ test('the keyboard shortcut runs a js sample that has no Run button', async() =>
   new win.MutationObserver((records) => { writes += records.length })
     .observe(frame, { attributes: true, attributeFilter: ['srcdoc'] })
 
-  code.textContent = '<b>bye</b>'
+  code.textContent = '<b>bye</b><script>go()</script>'
   code.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true }))
   await new Promise((resolve) => setTimeout(resolve, 800))
   assert.equal(writes, 0, 'typing ran the sample')
@@ -585,10 +757,11 @@ test('the keyboard shortcut runs a js sample that has no Run button', async() =>
   assert.equal(writes, 1, 'the edit had nowhere to go')
 })
 
-test('edit opens the pane that is showing, and switching tabs closes it', () => {
+test('edit opens the pane that is showing, and the mode follows the reader across tabs', () => {
   const element = mount('css="../../dist/lib.css"', `
     <pre><code class="hljs language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>
     <pre><code class="hljs language-css">b { color: red }</code></pre>
+    <pre><code class="hljs language-scss">$accent: red;</code></pre>
   `, { setup: (win) => { win.document.execCommand = () => true } })
   const edit = element.querySelector('.code-preview-edit')
   const [markup, css] = element.querySelectorAll('code')
@@ -607,14 +780,25 @@ test('edit opens the pane that is showing, and switching tabs closes it', () => 
   assert.equal(css.getAttribute('contenteditable'), 'true')
   assert.equal(markup.getAttribute('contenteditable'), null, 'a pane nobody opened took keystrokes')
 
-  // Switching away closes it: an editor behind a collapsed pane is one nobody can see to
-  // Esc out of, and the button now means the pane the reader moved to.
+  // Switching away moves it: the reader is editing the sample, not one block, so the
+  // hidden pane's editor closes — a text field behind a collapsed pane is one nobody can
+  // see to Esc out of — and the pane they moved to opens its own. Focus stays where the
+  // switch put it rather than being pulled into the block: a click's is on the tab, and
+  // arrow keys are mid-flight along the strip.
   element.setAttribute('tab', 'code')
   assert.equal(css.getAttribute('contenteditable'), null, 'the hidden pane was left editable')
+  assert.equal(markup.getAttribute('contenteditable'), 'true', 'the mode did not follow the reader')
+  assert.equal(element.classList.contains('is-editing'), true)
+  assert.equal(edit.getAttribute('aria-pressed'), 'true')
+
+  // A pane with no editor is the way out it always was — nothing there to keep the mode on.
+  element.setAttribute('tab', 'scss')
+  assert.equal(markup.getAttribute('contenteditable'), null, 'the hidden pane was left editable')
   assert.equal(element.classList.contains('is-editing'), false)
   assert.equal(edit.getAttribute('aria-pressed'), 'false')
 
-  // And pressing it again is the way out for a pointer, which has no Escape.
+  // And pressing the toggle is the way out for a pointer, which has no Escape.
+  element.setAttribute('tab', 'code')
   edit.click()
   assert.equal(element.ownerDocument.activeElement, markup)
   edit.click()
@@ -1275,10 +1459,13 @@ test('the css pane is last in head, and the js pane is a deferred module in body
 })
 
 test('a closing tag inside a pane cannot end the tag it is inlined into', () => {
+  // Without the console hook, which brings a legitimate script tag of its own — the
+  // count below is about the *inlined* text not closing early.
   const doc = buildSrcdoc('<p>hi</p>', {
     head: '',
     script: 'const end = "</script>"',
-    style: '/* </style> */'
+    style: '/* </style> */',
+    console: false
   })
   assert.match(doc, /const end = "<\\\/script>"/)
   assert.match(doc, /\/\* <\\\/style> \*\//)

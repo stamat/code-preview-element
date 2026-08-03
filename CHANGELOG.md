@@ -141,37 +141,79 @@ shows up in a function signature.
   `.code-preview-copy`, `.code-preview-note`, `.code-preview-icon-copy` and
   `.code-preview-icon-check` no longer exist, and `no-actions="copy"` names nothing.
 
+- **The sample's console, under the preview.** `console.log`, `info`, `warn`, `error` and
+  `debug` from inside the frame land in a strip directly under the preview — on screen
+  while the reader types the js that causes them, which a tab of its own could not be.
+  The strip appears with the first line and costs nothing before it: no box, no reserved
+  height. It holds the last hundred lines, follows the tail unless the reader has
+  scrolled up to read, and starts over when the frame rebuilds — a new document is a new
+  run, the same bargain the event counts make. A patched frame keeps its document and so
+  keeps its log. Lines still reach the browser's own console.
+
+  The capture is an inline script written first into the frame's head, ahead of every
+  deferred `js` url and of the sample's own module — so a top-level `console.log` on the
+  first run is caught, which wrapping the console from the host on the frame's load event
+  would miss: load fires after the sample has already said the interesting thing. Each
+  call is forwarded to the host as a `code-preview-log` CustomEvent on the iframe.
+  Values are formatted without `instanceof` — the frame is another realm, where its
+  `Element` and `Error` are different classes — so an element prints as `<tag>`, an
+  error as `name: message`, the rest as JSON where JSON can say it.
+
+  `no-console` on the element turns it off, hook and all, for a sample that logs on
+  every frame. A whole-document sample owns its head and gets no hook. Uncaught errors
+  stay the error banner's job.
+
+  **DOM the element produces:** `div.code-preview-console[role="log"]` between the
+  viewport and whatever sits below, once something has logged; `p.code-preview-console-line`
+  per line, with `.is-warn`/`.is-error` by level. `--code-preview-console-height`
+  (default `10rem`) caps the strip.
+
+  **Contents of the preview iframe:** one inline `<script>` first in head, rewiring the
+  console. A sample asserting on its document's first script will see this one.
+
 ### Changed
 
-- **Js waits for a Run button; markup and css still apply as you type.** The 600ms reload
-  debounce is gone — it was never the right tool. Markup and css are inert and keep the
-  250ms live path. Js does not: on a js pane, a `js` asset, an inline `<script>` in the
-  markup pane, or `reload`, the edit applies on **Run** or on
-  <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> and not before.
+- **The text that is code waits for a Run button; everything else applies as you type.**
+  The 600ms reload debounce is gone — it was never the right tool. Markup and css are
+  inert and keep the 250ms live path. Two edits are not: the js pane's own text, and
+  markup carrying an inline `<script>` — a single-fence js demo is exactly that. Those
+  apply on **Run** or on <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> and not
+  before, because a `srcdoc` frame is same-origin and shares the page's event loop:
+  half-typed js, `while (true` with the closing paren still to come, hangs the whole tab
+  and not just the preview. A longer debounce only decides how long the reader gets first.
+
+  A sample that runs js it is *not* typing — a `js` asset, the `reload` attribute — still
+  follows the typing: the rebuild re-runs that js from its own file, complete and valid,
+  never mid-statement. What the rebuild costs is the sample's live state, which is the
+  price of a preview that moves while the reader types markup; where nothing ran at all,
+  markup edits patch and cost nothing, as before.
 
   Run is always live and has no edited state. It re-runs the sample from whatever the
   blocks say when it is pressed, so pressing it on a sample nobody has touched still starts
   the demo over — the counter back to zero, the animation from the top. A button that greys
-  itself out between edits is one whose job the reader has to keep track of.
-
-  No delay makes an unasked run safe. It reloads the document, dropping everything live in
-  the sample — a script's state, an open menu, the control a keyboard user had focused. And
-  a `srcdoc` frame is same-origin, so it shares the page's event loop: half-typed js,
-  `while (true` with the closing paren still to come, hangs the whole tab and not just the
-  preview. A longer debounce only decides how long the reader gets before that happens.
+  itself out between edits is one whose job the reader has to keep track of. And it appears
+  only where edits wait on it: on the js tab, or on a lone fence carrying its own
+  `<script>`. Everywhere else it is not shown — edits there apply themselves, and a button
+  with nothing to do is one the reader has to wonder about. It is also a plain button now,
+  the same size and color as Edit: appearing at all is its statement, and the accent fill
+  it had on the js tab said that twice. Edit's pressed fill stays — that one is a toggle.
 
   A whole-document sample is rebuilt rather than patched, as it always was, but that is a
   different question: with no script in it there is nothing to execute, so it keeps the
   live typing. Turning an options panel knob is exempt and applies immediately, as it did.
 
-  **DOM the element produces:** `button.code-preview-run` only on samples that run
-  something, and it carries no disabled state of any kind.
+  **DOM the element produces:** `button.code-preview-run` only on samples with an editor
+  whose text is code — a js pane, or markup with an inline `<script>` — and it carries no
+  disabled state of any kind. A sample that merely reloads (`js` asset, `reload`) builds
+  no Run button at all; <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> still restarts
+  it from the editor.
 
   **CSS an author may be targeting:** editable blocks gained
-  `aria-keyshortcuts="Escape Control+Enter Meta+Enter"`, where it was `Escape` alone. The
-  host gained `.is-js-pane` while the js pane is the one showing, which is what fills the
-  Run button in with `--code-preview-accent`; off that tab it is a plain icon button like
-  edit and copy.
+  `aria-keyshortcuts="Escape Control+Enter Meta+Enter"`, where it was `Escape` alone.
+  `.is-js-pane` now means "the pane showing is one whose edits wait on Run" — the js tab,
+  or a single fence carrying its own `<script>` — and is what *shows* the Run button;
+  without it the button is `display: none`. The accent rules on
+  `.is-js-pane .code-preview-run` are gone.
 
 - **The tab strip moved above the code, and the toolbar split in two.** The tabs and the
   new actions belong to the code — a tab strip has to sit against the thing it labels to
@@ -195,6 +237,75 @@ shows up in a function signature.
   contract now, and the options panel is one caller of it — so the roving tabindex, the
   APG arrow keys, the `beforematch` handling and the focus rescue are written once and are
   the same for two panes or five. No markup changes; the options panel behaves as it did.
+
+- **The edit mode follows the reader across tabs.** Switching panes used to close the
+  editor outright; now the reader is editing the sample, not one block, so moving from the
+  markup tab to the css tab closes the hidden pane's editor and opens the new pane's own
+  in the same gesture. Focus stays where the switch put it — on the tab a click pressed,
+  or mid-flight along the strip on arrow keys — rather than being pulled into the block.
+  A pane with no editor (the options panel, a read-only fence) still closes the mode, and
+  <kbd>Esc</kbd> and the Edit toggle still end it from anywhere.
+
+- **Read-only panes no longer reserve the button strip.** The bottom padding that makes
+  room for Edit, Run and the keyboard hint (`--code-preview-hint-space`) is only held on
+  blocks that have an editor behind the button — a `no-edit` sample, a `scss` fence or a
+  numbered duplicate shows none of that furniture, and reserving a strip of nothing at
+  the bottom of it was dead space.
+
+  **CSS an author may be targeting:** the padding rule is now keyed off
+  `.is-editable:not(.is-tabbed)` for the lone block and `.is-code-pane` in a strip,
+  instead of `.is-editable` alone.
+
+### Fixed
+
+- **A script error is announced, not just drawn.** The error banner was CSS generated
+  content (`::after` reading `data-error`), which changes silently — a screen-reader user
+  who typed the edit that threw heard nothing. It is a real element with `role="alert"`
+  now, so the moment it appears is a moment assistive tech reports; the message is also
+  selectable at last, and an error message is the one string worth copying into a search.
+
+  **DOM the element produces:** `p.code-preview-error[role="alert"]`, appended on the
+  first error and kept (hidden) between errors. `data-error` on the host stays, and the
+  corner-radius rules still key off it — but a stylesheet targeting
+  `code-preview[data-error]::after` now styles nothing.
+
+- **The frame's document declares its language and a title.** `buildSrcdoc` copies the
+  host page's `<html lang>` into the frame — a screen reader picks its voice per
+  document, and a frame that does not say is read in the user's default — and writes a
+  `<title>Preview</title>` alongside the charset. A sample that brings its own document
+  is passed through untouched, as before.
+
+  **Contents of the preview iframe:** `<html lang="…">` whenever the host page has one,
+  and a `<title>` in head.
+
+- **Focus and state survive Windows High Contrast.** The focus ring on the code block is
+  a box-shadow, which forced-colors mode strips — and the rule that kept host themes'
+  outlines off the block used `outline: none`, leaving a focused block with no indicator
+  at all. It is `outline: 2px solid transparent` now: invisible in normal rendering,
+  repainted in a system color under forced colors. Selected tabs, pressed width buttons
+  and the open Edit toggle likewise restate themselves in `SelectedItem`/`SelectedItemText`
+  under `forced-colors: active`, where the border and fill they speak through flatten away.
+
+- **The keyboard stop on a sample names itself.** The focusable `pre` was a generic
+  element with no role and no name — a screen reader landing on it had nothing to
+  announce. Where it is not already the tabpanel (the single-fence page, or a `pre`
+  inside a copy-button script's wrapper) it is `role="group"` with the sample's label
+  now. The label the `code` block used to carry permanently moved with it: `code` is an
+  ARIA role that prohibits naming, so the block is labelled only while it is a
+  `role="textbox"` — the one moment naming it is allowed. A markup-supplied `aria-label`
+  on either element still wins.
+
+  **DOM the element produces:** `role="group"` and `aria-label` on the editable block's
+  `pre` outside tab strips; `aria-label` on the `code` block only while editing.
+
+- **Every preview frame has its own name.** All iframes were `title="Rendered preview"`,
+  so a screen reader's frame list on a page of twenty samples distinguished none of them.
+  The title is derived per sample now — `Rendered html sample`, or the block's own
+  `aria-label` when the markup gave one.
+
+- **Knob descriptions reach the keyboard.** A manifest entry's `description` sat only on
+  the row as a `title` tooltip, which never follows focus; it is on the control itself
+  too now, where a screen reader reads it as the field's description.
 
 ## [1.0.0] - 2026-07-31
 

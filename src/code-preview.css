@@ -147,10 +147,49 @@ code-preview .code-preview-bar + .code-preview-viewport {
    the toolbar above the preview is the widths', this one is the tabs'. There it is a
    divider, not the widget's top edge: square, and one line per seam — its own top
    border against the preview, and the pane's own line below, so no bottom border here
-   to double it. */
-code-preview .code-preview-viewport + .code-preview-bar {
+   to double it. The console, when a sample has logged, slots in between the two, so the
+   bar keeps the same treatment behind either neighbour. */
+code-preview :is(.code-preview-viewport, .code-preview-console) + .code-preview-bar {
   border-bottom: 0;
   border-radius: 0;
+}
+
+/* The frame's console, under the preview it came out of — on screen while the reader
+   types the js that causes it, which a pane of its own could not be. Appears with the
+   first line and holds the last hundred; between errors and rebuilds it is `hidden`,
+   which works because no `display` is declared for the UA rule to lose to. Mid-stack
+   box: its own top border seams against the viewport (which brings no bottom one), the
+   pane below brings the next line, no corners to round. */
+code-preview .code-preview-console {
+  box-sizing: border-box;
+  max-block-size: var(--code-preview-console-height, 10rem);
+  margin: 0;
+  padding: 0.25rem 0;
+  overflow-y: auto;
+  border: 1px solid var(--code-preview-border, var(--border, #d8d8d8));
+  border-bottom: 0;
+  background: var(--code-preview-bg, var(--bg, #fff));
+  color: var(--code-preview-fg-muted, var(--fg-muted, #656d76));
+  font: 0.75rem/1.6 var(--code-preview-font-mono, var(--font-mono, ui-monospace, monospace));
+}
+
+code-preview .code-preview-console-line {
+  margin: 0;
+  padding: 0.0625rem 0.75rem;
+  /* A logged object is one long token, and a console that overflows sideways hides the
+     end of the one line being debugged. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Levels by weight of color, not by icons: log stays muted, a warning takes the page's
+   own text color, an error the danger it shares with the banner below. */
+code-preview .code-preview-console-line.is-warn {
+  color: var(--code-preview-fg, var(--fg, inherit));
+}
+
+code-preview .code-preview-console-line.is-error {
+  color: var(--code-preview-danger, var(--danger, #cf222e));
 }
 
 /* Each strip belongs to the box it sits against, so each holds only what acts on that
@@ -215,18 +254,18 @@ code-preview .code-preview-actions .code-preview-action {
   background: var(--code-preview-bg, var(--bg, #fff));
 }
 
-/* On the js tab, and only there, Run stops being one of two equal things and becomes the
-   one the reader's edits are waiting on — so it fills in. Everywhere else it is a plain
-   icon button like Edit: a sample whose js is not on screen is one the reader is not
-   editing js in, and a permanently accented button in the corner of every code block on a
-   docs page is noise the page pays for on every sample.
+/* Run exists only where edits wait on it: the js pane, or a single-fence sample carrying
+   its own `<script>` — `.is-js-pane` is that state, whichever pane holds it. Markup and
+   css follow the typing, so on those panes there is nothing for the button to do, and a
+   button with nothing to do is one the reader has to wonder about.
 
-   Still no disabled state either way. Run re-runs from whatever the blocks say when it is
-   pressed, which is worth doing whether or not anything was edited. */
-code-preview.is-js-pane .code-preview-run {
-  border-color: var(--code-preview-accent, var(--accent, #0969da));
-  background: var(--code-preview-accent, var(--accent, #0969da));
-  color: var(--code-preview-bg, var(--bg, #fff));
+   Where it does show, it is a plain action button like Edit — appearing at all is the
+   statement, and an accent on top of that was one state said twice. Edit's pressed fill
+   stays: that one is a toggle, and the fill is which way it is. No disabled state
+   either. Run re-runs from whatever the blocks say when it is pressed, which is worth
+   doing whether or not anything was edited. */
+code-preview:not(.is-js-pane) .code-preview-run {
+  display: none;
 }
 
 /* Edit is a toggle, and pressed means the block is open. Same fill as Run's, because it is
@@ -251,6 +290,21 @@ code-preview .code-preview-width[aria-pressed="true"],
 code-preview .code-preview-tab[aria-selected="true"] {
   border-color: var(--code-preview-border, var(--border, #d8d8d8));
   color: var(--code-preview-fg, var(--fg, inherit));
+}
+
+/* Forced colors flattens the borders and fills these states speak through — a selected
+   tab and an idle one come out identical. Said again in the system's own vocabulary,
+   with `forced-color-adjust: none` scoped to exactly the selectors that carry state, so
+   everything else keeps the user's palette. */
+@media (forced-colors: active) {
+  code-preview .code-preview-width[aria-pressed="true"],
+  code-preview .code-preview-tab[aria-selected="true"],
+  code-preview .code-preview-edit[aria-pressed="true"] {
+    border-color: SelectedItem;
+    background: SelectedItem;
+    color: SelectedItemText;
+    forced-color-adjust: none;
+  }
 }
 
 /* The group summaries are in here too: a UA gives one a focus ring in some engines and
@@ -288,7 +342,6 @@ code-preview :is(.code-preview-width, .code-preview-tab, .code-preview-action, .
      the label dark on the one button whose label is the surface color. Both rules are
      `(0,2,1)`, so this is order and not specificity — which is why the two live together
      rather than the second sitting wherever it was first needed. */
-  code-preview.is-js-pane .code-preview-run:hover,
   code-preview .code-preview-edit[aria-pressed="true"]:hover {
     background: color-mix(in srgb, var(--code-preview-accent, var(--accent, #0969da)) 85%, #fff);
     color: var(--code-preview-bg, var(--bg, #fff));
@@ -373,15 +426,24 @@ code-preview > .code-wrap > pre {
 }
 
 /* The bottom padding is the room the buttons and the keyboard hint sit in. Reserved on
-   every editable block rather than added when either appears: the hint appears on Edit,
-   and growing the block at that moment shifts the whole page down under the reader's
-   cursor. Held once, from upgrade, so opening the editor costs no layout.
+   every block that has an editor rather than added when either appears: the hint appears
+   on Edit, and growing the block at that moment shifts the whole page down under the
+   reader's cursor. Held once, from upgrade, so opening the editor costs no layout.
+
+   Only on blocks that *have* an editor, which the buttons and the hint describe: a
+   read-only pane — `no-edit`, a `scss` fence, a numbered duplicate — shows neither, and
+   reserving a strip of nothing at the bottom of it is padding for furniture that never
+   comes. In a tab strip `.is-code-pane` says the pane showing is an editor's (the hidden
+   ones are collapsed by the rule above either way); alone, `.is-editable` can only mean
+   the one block there is.
 
    `--code-preview-hint-space` is the taller of the two (the button, 1.75rem) plus the gap
    below it, rounded up. Set it to whatever the host's `pre` padding already is if that is
    roomy enough. */
-code-preview.is-editable > .code-wrap > pre,
-code-preview.is-editable > pre {
+code-preview.is-editable:not(.is-tabbed) > .code-wrap > pre,
+code-preview.is-editable:not(.is-tabbed) > pre,
+code-preview.is-code-pane > .code-wrap > pre,
+code-preview.is-code-pane > pre {
   padding-block-end: var(--code-preview-hint-space, 2.25rem);
 }
 
@@ -410,13 +472,19 @@ code-preview.is-editing > pre:focus-within,
 code-preview > .code-wrap > pre:focus-visible,
 code-preview > pre:focus-visible {
   box-shadow: 0 0 0 2px var(--code-preview-accent, var(--accent, #0969da));
+  /* Forced colors strips box-shadow. A transparent outline is invisible here and painted
+     in a system color there, so the ring survives Windows High Contrast — the one mode
+     where a focus indicator matters most is the one where this used to have none. */
+  outline: 2px solid transparent;
 }
 
-/* A tab stop needs no outline of its own on top of the ring above, and a `pre` that a host
-   theme has given one would otherwise draw both. */
+/* Transparent rather than `none`, doing both of that word's jobs: it still keeps a host
+   theme's own outline off a focused `pre` — the box-shadow above is the ring — and
+   forced-colors mode repaints transparent outlines, where `none` would leave a focused
+   block with no indicator at all once the box-shadow is stripped. */
 code-preview > .code-wrap > pre:focus,
 code-preview > pre:focus {
-  outline: none;
+  outline: 2px solid transparent;
 }
 
 /* The way out of the editor, said out loud. Tab indents in there, so it is not also the
@@ -784,16 +852,20 @@ code-preview .code-preview-rule {
 }
 
 /* A sample whose script threw. The message comes from the frame's own error event,
-   so it names the line rather than just saying something broke.
+   so it names the line rather than just saying something broke. A real element with
+   `role="alert"` rather than the generated content it used to be, so the moment it
+   appears is a moment a screen reader hears about — and the message is selectable,
+   which a pseudo-element's text never is. No `display` of its own: a `p` is a block
+   box already, and leaving the declaration out is what lets the UA's `[hidden]` rule
+   hide it between errors.
 
    Last box in the stack, so it takes the bottom corners the code block would
    otherwise own — same trick as the width bar at the top, from the other end.
    Tinted from --code-preview-danger rather than given a flat red background, so it reads as an
    error in a dark theme too without this sheet knowing which one it is in: a
    transparent wash over whatever --code-preview-bg already is. */
-code-preview[data-error]::after {
-  content: "⚠ " attr(data-error);
-  display: block;
+code-preview .code-preview-error {
+  margin: 0;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--code-preview-border, var(--border, #d8d8d8));
   /* The code block above brings its own bottom border; two of them read as one thick
@@ -807,6 +879,12 @@ code-preview[data-error]::after {
      to let overflow the box silently. */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The glyph is decoration on a message that already announces itself, so it lives in the
+   stylesheet rather than in the text a reader would select along with it. */
+code-preview .code-preview-error::before {
+  content: "⚠ ";
 }
 
 /* With the banner there, whichever pane is showing is no longer the bottom of the

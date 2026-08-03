@@ -55,6 +55,8 @@
 //                    as a bare token in a markdown fence's info string
 //   no-toast         no name over the preview when the sample fires a documented event —
 //                    for one that fires on every pointermove. The panel still counts it
+//   no-console       no console strip under the preview, and no console hook in the
+//                    frame — for a sample that logs on every frame and would scroll forever
 //   no-shrink        let the preview grow to its tallest measurement and stay there,
 //                    for a sample that would otherwise measure short and shift the
 //                    page as a font or an image lands
@@ -82,6 +84,50 @@ const PANE_OF: Record<string, string> = {
 const PANE_LABEL: Record<string, string> = { code: 'HTML', css: 'CSS', js: 'JS' }
 
 const DEFAULT_HEAD = '<style>body{margin:0;padding:1rem}</style>'
+
+// Rewires the frame's console and forwards every call to the host as a CustomEvent on the
+// iframe itself — `frameElement` is the same-origin way back out, and the host put a
+// listener on the frame before any document was in it.
+//
+// An inline classic script, first in head, because that is the one thing that runs during
+// the parse — ahead of every deferred url in `js` and of the body's own module — so a
+// sample's top-level `console.log` is caught too. Wrapping the console from the *host* on
+// the frame's load event looks simpler and silently is not: load fires after the sample
+// has run, which is exactly when most demos have already said the interesting thing.
+//
+// The try is a frame mid-teardown: a log fired from a timer while the document is being
+// replaced has no `frameElement` left to reach.
+const CONSOLE_HOOK = '<script>for(const l of ["log","info","warn","error","debug"]){' +
+  'const n=console[l].bind(console);console[l]=(...a)=>{n(...a);' +
+  'try{frameElement.dispatchEvent(new CustomEvent("code-preview-log",{detail:{level:l,args:a}}))}catch{}}}</script>'
+
+// How much console a strip holds before the oldest line falls off. A demo that logs more
+// than this is a demo being profiled, and the browser's own console is where that reads.
+const LOG_LIMIT = 100
+
+// One console argument on one line, formatted in the parent realm from values born in the
+// frame's — so no `instanceof` anywhere: a frame's `Element` and `Error` are different
+// classes from this document's, and a `localName` or a `message` is what a node or an
+// error has in every realm. Strings print bare, the way a console prints them.
+const logText = (value: unknown): string => {
+  if (typeof value === 'string') return value
+  if (typeof value === 'function') return 'ƒ'
+  if (value && typeof value === 'object') {
+    const known = value as { localName?: unknown, message?: unknown, name?: unknown }
+    if (typeof known.localName === 'string') return `<${known.localName}>`
+    if (typeof known.name === 'string' && typeof known.message === 'string') {
+      return `${known.name}: ${known.message}`
+    }
+    // Cycles throw, and a value JSON cannot say (a symbol-keyed bag) comes back
+    // undefined; both fall through to the default stringification.
+    try {
+      return JSON.stringify(value) ?? String(value)
+    } catch {
+      return String(value)
+    }
+  }
+  return String(value)
+}
 
 // Everything that can hold focus without being given a tab stop.
 const FOCUSABLE = 'a[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]'
@@ -184,9 +230,19 @@ export function scaleToFit(available: number, emulated: number): number {
 // above are silent rather than loud.
 export function buildSrcdoc(
   html: string,
-  opts: { css?: string[], js?: string[], head?: string | null, style?: string, script?: string } = {}
+  opts: { css?: string[], js?: string[], head?: string | null, style?: string, script?: string, lang?: string, console?: boolean } = {}
 ): string {
   if (isDocument(html)) return html
+  // The console hook, first thing after the charset so nothing can log before it is
+  // wired. Off only when asked (`no-console`) — a sample that owns its whole document
+  // never gets one either, since it owns its head; that is the passthrough above.
+  const hook = opts.console === false ? '' : CONSOLE_HOOK
+  // The host page's language, carried onto the frame's `<html>`: a screen reader picks
+  // its voice per document, and a frame that does not say is read in the user's default —
+  // wrong exactly where the docs page said otherwise. The `<title>` is the same claim at
+  // the document level that the iframe's `title` attribute makes at the frame level, and
+  // checkers ask for both.
+  const lang = opts.lang ? ` lang="${attr(opts.lang)}"` : ''
   const styles = (opts.css ?? []).map((href) => `<link rel="stylesheet" href="${attr(href)}">`).join('')
   // Scripts last, so a library's stylesheet is in place before its js measures anything —
   // and every one of them deferred, which is not a nicety.
@@ -216,7 +272,7 @@ export function buildSrcdoc(
   // module is deferred too, and deferred scripts run in document order, so this one runs
   // after every url in `js`.
   const module = opts.script ? `<script type="module">${inlineSafe(opts.script)}</script>` : ''
-  return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+  return '<!DOCTYPE html><html' + lang + '><head><meta charset="utf-8"><title>Preview</title>' + hook +
     styles + (opts.head ?? DEFAULT_HEAD) + style + scripts +
     '</head><body>' + html + module + '</body></html>'
 }
@@ -326,6 +382,14 @@ export class CodePreview extends HTMLElement {
   // The pane currently open for editing, and the whole of that state: at most one at a
   // time, since Edit acts on the block that is showing and switching tabs closes it.
   private editing?: Pane
+  // Whether the open editor's `aria-label` is ours to take back — a markup-supplied one
+  // is not, and `exitEdit` must not strip a name the page put there itself.
+  private labelled = false
+  // The error banner, once a sample has thrown. Kept so a later error reuses the box.
+  private errorBox?: HTMLElement
+  // The console strip, once a sample has logged. Built on the first line, like the
+  // banner: a sample that never logs pays no box for it.
+  private logBox?: HTMLElement
   // The rebuild button, once this sample is one that can need it. Built on demand rather
   // than with Edit, because whether a sample runs anything is a question about its text,
   // and its text is edited — see `buildRun`.
@@ -374,7 +438,10 @@ export class CodePreview extends HTMLElement {
 
     const frame = document.createElement('iframe')
     frame.className = 'code-preview-frame'
-    frame.title = 'Rendered preview'
+    // Named per sample rather than one string for every frame: a docs page has as many
+    // previews as it has samples, and a screen reader's frame list with twenty entries
+    // saying the same thing distinguishes none of them.
+    frame.title = `Rendered ${this.labelOf(this.panes.get('code'))}`
     // A demo far down a long page costs nothing until it is scrolled to. The frame
     // has no height until it loads, which is what the css min-height covers.
     frame.loading = 'lazy'
@@ -387,6 +454,10 @@ export class CodePreview extends HTMLElement {
     // that ever stops being true.
     frame.setAttribute('scrolling', 'no')
     frame.addEventListener('load', () => this.onFrameLoad())
+    // The other end of CONSOLE_HOOK: the frame's rewired console dispatches on the iframe
+    // itself, which is the one element both realms can name. On before any document is in
+    // the frame, so the earliest inline log already has a listener.
+    frame.addEventListener('code-preview-log', this.onFrameLog)
 
     // The frame lives in a wrapper rather than directly in the element, because
     // `viewport-width` scales the frame and something unscaled has to own the
@@ -583,10 +654,16 @@ export class CodePreview extends HTMLElement {
     // about a block that is not on screen — and the reader's way out of it, the Edit
     // button, has by then switched to meaning the pane they moved to.
     //
+    // Closed, but not necessarily *left*: a reader who opened the editor and then went to
+    // the css tab is editing the sample, not that one block, so the mode follows them onto
+    // any pane that can take it — reopened below, once the panes have switched. A pane
+    // that cannot (the options panel, a read-only fence) is the way out it always was.
+    //
     // Before the focus handling below, and not after: `exitEdit` puts focus on the Edit
     // button, which is a child of the host and not of any panel, so the loop that follows
     // correctly finds nothing left to rescue.
-    if (this.editing && this.editing.name !== current) this.exitEdit()
+    const followed = !!this.editing && this.editing.name !== current
+    if (followed) this.exitEdit()
 
     // Focus cannot be left in the pane about to be hidden. Hiding the element focus is in
     // drops it on the body, and a keyboard user's next Tab starts again from the top of
@@ -621,11 +698,14 @@ export class CodePreview extends HTMLElement {
     // which is not the block the reader is looking at.
     this.classList.toggle('is-code-pane', !!this.panes.get(current)?.editMode)
 
-    // Whether the reader is looking at the js. The stylesheet fills the Run button in
-    // while they are: on that tab it is the button their edits are waiting on, and on
-    // every other tab it is one of two equal things they might do next. The pane's
-    // name and not the fence's language, because the name is the normalised one.
-    this.classList.toggle('is-js-pane', current === 'js')
+    // Whether the pane showing is one whose edits wait on Run; see `syncRunPane`.
+    this.syncRunPane()
+
+    // The editor the reader had open, reopened on the pane they moved to — after the
+    // panes have switched, so `enterEdit` finds the new one showing. Without focus: a
+    // click's focus is on the tab, and arrow keys are mid-flight along the strip, so the
+    // block lighting up must not pull either off it.
+    if (followed && this.panes.get(current)?.editMode) this.enterEdit(false)
   }
 
   // Automatic activation, which is what the APG asks for wherever showing a panel costs
@@ -866,7 +946,7 @@ export class CodePreview extends HTMLElement {
     // something unchanged, because that is what it is for.
     if (last && last.html === next.html && last.css === next.css && last.js === next.js) return
     this.rendered = next
-    delete this.dataset.error
+    this.clearError()
     // The sample itself changed, so the last measurement no longer describes it — an
     // edit that deletes half the markup has to be able to shrink the preview back.
     this.peak = 0
@@ -897,7 +977,17 @@ export class CodePreview extends HTMLElement {
       this.fit()
     } else {
       this.loaded = false
-      frame.srcdoc = buildSrcdoc(next.html, { ...this.assets, style: next.css, script: next.js })
+      // Before the write, not on the next load event: the new document logs *during* its
+      // parse — the hook is first in head so nothing can log ahead of it — and a clear
+      // that waits for `load` arrives after those lines and wipes them.
+      this.clearLog()
+      frame.srcdoc = buildSrcdoc(next.html, {
+        ...this.assets,
+        style: next.css,
+        script: next.js,
+        lang: document.documentElement.lang,
+        console: !this.hasAttribute('no-console')
+      })
     }
   }
 
@@ -964,28 +1054,36 @@ export class CodePreview extends HTMLElement {
     return !!last && this.loaded && last.html === next.html && last.js === next.js && !isDocument(next.html)
   }
 
-  // Markup and css are inert, so they follow the typing on a short delay: the frame is
-  // patched, or — for a css edit, which is the one an author makes in bursts, and which
-  // is why `cssOnly` is asked first even in a sample that otherwise reloads — its
-  // stylesheet is simply written to.
+  // Whether typing this text is typing code that would run: the js pane's own text, or
+  // markup carrying an inline `<script>`. Only these wait on the Run button — a srcdoc
+  // frame is same-origin, so half-typed js (`while (true` with the paren still to come)
+  // hangs the whole tab, and no debounce makes that safe; it only decides how long the
+  // reader gets before it happens.
   //
-  // Js is the exception, and no delay makes it safe to apply unasked. Two reasons, and
-  // the second is the one that decided this:
+  // A url in `js` or the `reload` attribute still costs a rebuild (see `reloads`), but
+  // the text being typed there is inert markup, and the js that re-runs comes from its
+  // own pane or its own file — complete and valid, never mid-statement. What the rebuild
+  // costs is the sample's live state, which is real, and which following the typing was
+  // judged worth: the reader watching a preview not move until they find a button is the
+  // worse failure for the two panes whose whole point is that they are not code.
+  private hazard(from: string | undefined, next: Sources): boolean {
+    if (from === 'js') return true
+    return from === 'code' && hasScript(next.html)
+  }
+
+  // Markup and css follow the typing on a short delay: the frame is patched, its
+  // stylesheet written to — a css edit is the one an author makes in bursts, which is why
+  // `cssOnly` is asked first — or, for a sample that runs something, rebuilt whole.
   //
-  //   - it reloads the document, which drops everything live in the sample — a script's
-  //     state, an open menu, the control a keyboard user had focused
-  //   - a srcdoc frame is same-origin, so it shares this page's event loop. Half-typed
-  //     js — `while (true` with the closing paren still to come — hangs the whole tab,
-  //     not just the preview. A longer debounce does not fix that; it only decides how
-  //     long the reader gets before it happens.
-  //
-  // So that one is offered rather than performed, and the Run button is how it is asked
-  // for. `force` is the options panel writing through `source`: turning a knob is already
-  // the reader asking, and a knob that did nothing until a second click would be a bug.
-  private schedule(force = false): void {
+  // The `hazard` edits are the exception: those are offered rather than performed, and
+  // the Run button is how they are asked for. `force` is the options panel writing
+  // through `source`: turning a knob is already the reader asking, and a knob that did
+  // nothing until a second click would be a bug.
+  private schedule(force = false, from?: string): void {
     if (this.timer) clearTimeout(this.timer)
     const next = this.sources()
-    if (!force && !this.cssOnly(next, this.rendered) && this.runs(next)) {
+    this.syncRunPane()
+    if (!force && !this.cssOnly(next, this.rendered) && this.hazard(from, next)) {
       // Nothing is scheduled and nothing is remembered about the edit: the button is
       // always live and always re-runs from whatever the blocks say when it is pressed,
       // so there is no pending state for this to keep.
@@ -993,6 +1091,17 @@ export class CodePreview extends HTMLElement {
       return
     }
     this.timer = setTimeout(() => this.render(), PATCH_DELAY)
+  }
+
+  // Whether the pane the reader is looking at is one whose edits wait on Run — the js
+  // pane, or markup that carries its own `<script>`, which is the single-fence js demo.
+  // The class is the stylesheet's whole basis for the button: shown on that pane, absent
+  // everywhere else, since edits anywhere else apply as they are typed and a button with
+  // nothing to do is one to wonder about.
+  private syncRunPane(): void {
+    const current = this.pane
+    this.classList.toggle('is-js-pane', current === 'js' ||
+      (current === 'code' && hasScript(this.panes.get('code')?.code?.textContent ?? '')))
   }
 
   // Run means run, and it means it every time. Not "apply the edit" — pressed twice on a
@@ -1102,7 +1211,10 @@ export class CodePreview extends HTMLElement {
   // Everything a text field needs is put on the block here rather than at upgrade, because
   // until this moment the block is not one: a `role="textbox"` on something that takes no
   // keystrokes is a promise to a screen reader that the page cannot keep.
-  private enterEdit(): void {
+  //
+  // `focus` is false only when the mode is following the reader across a tab switch,
+  // where their focus is on the strip and belongs there.
+  private enterEdit(focus = true): void {
     const showing = this.panes.get(this.pane)
     const target = showing?.editMode
       ? showing
@@ -1113,6 +1225,14 @@ export class CodePreview extends HTMLElement {
     this.editing = target
     code.setAttribute('contenteditable', target.editMode)
     code.setAttribute('role', 'textbox')
+    // The textbox's name, worn for exactly as long as the role is: at rest the block is a
+    // `code` element, whose ARIA role prohibits naming — the label lived there permanently
+    // once, and that is a checker flag on every sample of every page. The markup's own
+    // label still wins, and is not ours to take back on the way out.
+    if (!code.hasAttribute('aria-label') && !code.hasAttribute('aria-labelledby')) {
+      code.setAttribute('aria-label', this.labelOf(target))
+      this.labelled = true
+    }
     // The default for a textbox is a single line, and a code sample is not that.
     code.setAttribute('aria-multiline', 'true')
     // The keys in here that are not keys anywhere else. A shortcut that exists only in a
@@ -1127,7 +1247,7 @@ export class CodePreview extends HTMLElement {
     }
     this.classList.add('is-editing')
     this.edit?.setAttribute('aria-pressed', 'true')
-    code.focus()
+    if (focus) code.focus()
   }
 
   // Back to a code block: not editable, not focusable, nothing announced about it. The
@@ -1144,6 +1264,10 @@ export class CodePreview extends HTMLElement {
     this.editing = undefined
     for (const name of ['contenteditable', 'role', 'aria-multiline', 'aria-keyshortcuts', 'aria-describedby']) {
       code.removeAttribute(name)
+    }
+    if (this.labelled) {
+      code.removeAttribute('aria-label')
+      this.labelled = false
     }
     this.classList.remove('is-editing')
     this.edit?.setAttribute('aria-pressed', 'false')
@@ -1181,6 +1305,81 @@ export class CodePreview extends HTMLElement {
     this.run = this.action('run', 'Run', ICON.run, this.runNow)
   }
 
+  // The banner under the code block. A real element rather than the `::after` it once
+  // was, because generated content changes silently: `role="alert"` is what makes a
+  // script error something a screen reader hears at the moment it happens, and the
+  // reader who just typed the edit is the one audience this banner exists for. It is
+  // also selectable now, and an error message is the one string here worth copying into
+  // a search box. `data-error` stays alongside it — the stylesheet keys the corner radii
+  // off the attribute, and so may a host page's.
+  private showError(message: string): void {
+    this.dataset.error = message
+    if (!this.errorBox) {
+      const box = document.createElement('p')
+      box.className = 'code-preview-error'
+      box.setAttribute('role', 'alert')
+      this.appendChild(box)
+      this.errorBox = box
+    }
+    this.errorBox.hidden = false
+    this.errorBox.textContent = message
+  }
+
+  private clearError(): void {
+    delete this.dataset.error
+    if (this.errorBox) {
+      this.errorBox.hidden = true
+      this.errorBox.textContent = ''
+    }
+  }
+
+  // A line out of the frame's console. The strip is not a live region by class alone —
+  // `role="log"` is, politely, which is exactly a console's temperament: additions are
+  // announced, nothing re-reads, and `no-console` is the answer for a sample that would
+  // not shut up. Under the preview rather than a pane of its own, so the logs are on
+  // screen while the reader types the js that causes them.
+  private onFrameLog = (event: Event): void => {
+    if (this.hasAttribute('no-console')) return
+    const { level, args } = (event as CustomEvent<{ level?: unknown, args?: unknown }>).detail ?? {}
+    if (typeof level !== 'string' || !Array.isArray(args)) return
+
+    if (!this.logBox) {
+      const box = document.createElement('div')
+      box.className = 'code-preview-console'
+      box.setAttribute('role', 'log')
+      box.setAttribute('aria-label', 'Console')
+      box.hidden = true
+      // Directly under the preview, whatever else the stack holds — `after` on the
+      // viewport lands it ahead of the tab strip that was put there at upgrade.
+      this.viewport?.after(box)
+      this.logBox = box
+    }
+    const box = this.logBox
+
+    const line = document.createElement('p')
+    line.className = 'code-preview-console-line' +
+      (level === 'error' ? ' is-error' : level === 'warn' ? ' is-warn' : '')
+    line.textContent = args.map(logText).join(' ')
+
+    // Follow the tail only if the reader was at it: a console that yanks the scroll back
+    // down while they read an old line is worse than one that falls behind.
+    const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 8
+    box.appendChild(line)
+    while (box.children.length > LOG_LIMIT) box.firstElementChild?.remove()
+    if (stick) box.scrollTop = box.scrollHeight
+    box.hidden = false
+  }
+
+  // A rebuilt frame is a new document and a new run of the sample, so the strip starts
+  // over with it — the devtools default, and the same bargain the event counts make.
+  // A patched frame keeps its document and so keeps its log.
+  private clearLog(): void {
+    if (this.logBox) {
+      this.logBox.replaceChildren()
+      this.logBox.hidden = true
+    }
+  }
+
   private onFrameLoad(): void {
     const doc = this.frame?.contentDocument
     if (!doc) return
@@ -1201,7 +1400,7 @@ export class CodePreview extends HTMLElement {
     // errors. Without this a broken edit just looks like a preview that quietly
     // stopped working.
     this.frame?.contentWindow?.addEventListener('error', (event) => {
-      this.dataset.error = (event as ErrorEvent).message || 'Script error'
+      this.showError((event as ErrorEvent).message || 'Script error')
     })
     this.fit()
     // A loaded document is the first moment anything can be computed out of it, which is
@@ -1353,9 +1552,10 @@ export class CodePreview extends HTMLElement {
       if (pane.jar || !this.editable(pane)) continue
       const code = pane.code!
       pane.jar = CodeJar(code, (element) => this.highlight(element, pane.language), { tab: '  ' })
-      // The text is read back off the blocks, so which pane reported the keystroke does
-      // not matter — only that one of them did.
-      pane.jar.onUpdate(() => this.schedule())
+      // The text is read back off the blocks, so the pane's name is all the report
+      // carries: `schedule` needs it to tell an edit that is code being typed — held for
+      // Run — from one that is markup or css, which follows the typing.
+      pane.jar.onUpdate(() => this.schedule(false, pane.name))
       // A code block on a docs page is something you Tab past, and one that is quietly
       // editable is a text field in the middle of that — Tab indents once you are in it,
       // so the way out is a key nobody has been told about yet. Editing is opt-in per
@@ -1366,11 +1566,6 @@ export class CodePreview extends HTMLElement {
       // remembered rather than re-derived here, and handed back by `enterEdit`.
       pane.editMode = code.getAttribute('contenteditable') ?? 'true'
       code.removeAttribute('contenteditable')
-      // The name the block carries whether or not it is open — the markup's own wins, since
-      // a docs page that has already labelled a sample knows better than a language name.
-      if (!code.hasAttribute('aria-label') && !code.hasAttribute('aria-labelledby')) {
-        code.setAttribute('aria-label', `${pane.language} sample`)
-      }
       this.buildHint()
       // The keyboard's half of the Edit button. Taking the block out of the tab order
       // solved the trap, and would have left a keyboard user with nothing but a small icon
@@ -1388,6 +1583,17 @@ export class CodePreview extends HTMLElement {
       if (pre) {
         pre.tabIndex = 0
         pre.setAttribute('aria-describedby', this.hint!.id)
+        // A tab stop has to say what it is. A bare `pre` is a generic element, and a
+        // focusable generic with no role and no name is a stop a screen reader has
+        // nothing to announce at. In a tab strip the `pre` is already the tabpanel,
+        // named by its tab; everywhere else — the single-fence page, or a `pre` inside a
+        // copy-button script's wrapper — it takes the name the code block used to carry.
+        // The markup's own `aria-label` still wins, since a docs page that has already
+        // labelled a sample knows better than a language name.
+        if (!pre.hasAttribute('role')) {
+          pre.setAttribute('role', 'group')
+          if (!pre.hasAttribute('aria-label')) pre.setAttribute('aria-label', this.labelOf(pane))
+        }
       }
       any = true
     }
@@ -1397,10 +1603,13 @@ export class CodePreview extends HTMLElement {
     // Tab by then. A stable reference, so reconnecting cannot double it up.
     this.addEventListener('keydown', this.onEditorKey, true)
     this.classList.add('is-editable')
-    // A sample that already runs something gets its button now rather than at the first
-    // keystroke: a button that appears under the reader's hands is one they did not ask
-    // for and may already be mid-click on something else.
-    if (this.runs(this.sources())) this.buildRun()
+    // A sample whose text is code — a js pane with an editor, or markup carrying its own
+    // `<script>` — gets its button now rather than at the first keystroke: a button that
+    // appears under the reader's hands is one they did not ask for and may already be
+    // mid-click on something else. A sample that merely *reloads* (a `js` url, `reload`)
+    // gets none: its edits follow the typing now, so there is nothing for Run to apply.
+    if (this.panes.get('js')?.editMode || hasScript(this.sources().html)) this.buildRun()
+    this.syncRunPane()
   }
 
   // WCAG 2.1.2, no keyboard trap. Tab indents inside a code editor, which means it cannot
@@ -1464,6 +1673,13 @@ export class CodePreview extends HTMLElement {
     hint.textContent = HINT_CLOSED
     this.appendChild(hint)
     this.hint = hint
+  }
+
+  // The sample's name, wherever one is needed outside the block itself — the frame's
+  // title, the editor's label, the tab stop's. The markup's own `aria-label` wins, since
+  // a docs page that has already labelled a sample knows better than a language name.
+  private labelOf(pane?: Pane): string {
+    return pane?.code?.getAttribute('aria-label') ?? `${pane?.language ?? this.language} sample`
   }
 
   // Shared by the first paint and every keystroke after it. Looked up per call

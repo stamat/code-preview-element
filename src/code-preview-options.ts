@@ -546,6 +546,10 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
       if (input instanceof HTMLSelectElement) input.options[0].textContent = `default (${entry.default})`
       else if (input instanceof HTMLInputElement && input.type !== 'checkbox') input.placeholder = entry.default
     }
+    // On the control as well as the row: a `title` on the input is what a screen reader
+    // gets as the field's description when focus lands there — the row's own tooltip
+    // never follows a keyboard.
+    if (entry.description) input.title = entry.description
     inputs.set(entry.name.toLowerCase(), input)
     input.addEventListener('input', () => {
       const value = input instanceof HTMLInputElement && input.type === 'checkbox'
@@ -569,6 +573,7 @@ function fillPanel(host: CodePreview, panel: HTMLElement, declaration: Declarati
       // Documented without a default: ask the frame, once it has something to ask.
       undocumented.push([input, entry.name])
     }
+    if (entry.description) input.title = entry.description
     input.addEventListener('input', () => {
       const value = input.value.trim()
       if (value) touched[entry.name] = value

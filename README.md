@@ -140,6 +140,7 @@ Reach for something else when the shape of the problem is different:
 | `no-edit`         | leave the code read-only — all of it, or only the panes it names                  |
 | `no-actions`      | drop the Edit and Run buttons — both, or only the one it names                    |
 | `no-toast`        | no event name over the preview — the panel still counts what fires                |
+| `no-console`      | no console strip under the preview, and no console hook in the frame              |
 | `no-shrink`       | never size the preview below its tallest measurement                              |
 | `reload`          | always rebuild the frame on edit, never patch it                                  |
 
@@ -287,6 +288,10 @@ bottom-left corner saying it could be. Press that — or press <kbd>Enter</kbd> 
 block focused — and it becomes an editor. <kbd>Esc</kbd> closes it again, as does pressing
 the button a second time.
 
+The mode follows you across tabs: you are editing the sample, not one block, so switching
+to the css pane opens its editor in the same gesture. A pane with no editor — the options
+panel, a read-only fence — closes it, the way it always did.
+
 An always-editable block is the wrong default, and the reason is Tab. Tab has to indent
 inside a code editor, so it cannot also be the way out; a block that is quietly editable is
 therefore a keyboard trap sitting in the middle of a docs page, and every reader tabbing
@@ -322,27 +327,50 @@ a head this element built, so it is a write to that element's text. Nothing relo
 nothing reparses, which means the sample keeps everything a rebuild would cost it: a
 script's variables, an open menu, the control that had focus.
 
-**Js is the exception, and it waits for the Run button**, for
+**The text that is code is the exception, and it waits for the Run button**, for
 <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> in the editor, or for the editor being
 closed. Run is always live and
 always re-runs the sample from whatever the blocks say when it is pressed — it is not an
 "apply the edit" button, so pressing it on a sample nobody has touched still starts the
-demo over: the counter back to zero, the animation from the top. Four things count as js:
-a [js pane](#several-fences-several-tabs),
-a `js` asset on the element, an inline `<script>` written in the markup pane, and the
-`reload` attribute. The inline `<script>` counts because it is js wherever it was typed —
-a single-fence js demo is exactly that — and because `innerHTML` never executes a script
-it inserts, so applying it silently would leave the demo rendered but dead.
+demo over: the counter back to zero, the animation from the top. Two edits count:
+the [js pane](#several-fences-several-tabs)'s own text, and an inline `<script>` written
+in the markup pane — that one is js wherever it was typed, and a single-fence js demo is
+exactly that.
 
-A button rather than a longer debounce, because no delay makes an unasked run safe. It
-reloads the document, which drops everything live in the sample. And a `srcdoc` frame is
-same-origin, so it shares the page's event loop: half-typed js — `while (true` with the
-closing paren still to come — hangs the whole tab, not just the preview. A longer debounce
-does not prevent that, it only decides how long the reader gets first.
+A button rather than a longer debounce, because no delay makes running half-typed code
+safe. A `srcdoc` frame is same-origin, so it shares the page's event loop: `while (true`
+with the closing paren still to come hangs the whole tab, not just the preview. A longer
+debounce does not prevent that, it only decides how long the reader gets first.
+
+A sample that runs js it is *not* typing — a `js` asset on the element, the `reload`
+attribute — still follows the typing: the rebuild re-runs that js from its own file,
+complete and valid, never mid-statement. What the rebuild costs is the sample's live
+state, which is why markup edits patch wherever nothing ran at all.
 
 A sample that is a whole document is rebuilt rather than patched — `render` cannot patch
 a head it did not write — but that is not the same question. With no script in it there is
 nothing to execute, so it keeps the live typing markup gets.
+
+### The console
+
+**What the sample logs appears under the preview**, in a strip that exists only once
+something has been logged: `console.log`, `info`, `warn`, `error` and `debug` all land
+there, still reaching the browser's own console too. It sits under the preview rather
+than in a tab so the logs are on screen while you type the js that causes them, holds the
+last hundred lines, follows the tail unless you have scrolled up to read, and starts over
+when the frame rebuilds — a new document is a new run, the same bargain the event counts
+make. It is a `role="log"` region, so a screen reader hears new lines without anything
+being re-read.
+
+The capture is a small script the element writes first into the frame's head — before
+the deferred `js` urls and the sample's own module, so a top-level `console.log` on the
+first run is caught too. A sample that is a whole document owns its head, so it gets no
+hook and no strip. `no-console` turns the whole thing off, hook and all — the right call
+for a sample that logs on every frame. Uncaught errors are not the console's job either
+way: those go to the [error banner](#custom-properties), which announces itself.
+
+The strip's height is `--code-preview-console-height` (default `10rem`), scrolling past
+it.
 
 Turning an [options panel](#the-options-panel) knob is exempt from all of it. The click is
 already the reader asking, and a knob that did nothing until a second press on Run would
@@ -357,12 +385,14 @@ element with:
 | Button   |                                                                                    |
 | -------- | ---------------------------------------------------------------------------------- |
 | **Edit** | opens the editor on the pane that is showing, and closes it again. A toggle          |
-| **Run**  | runs the sample again, edited or not. Only on samples that run something             |
+| **Run**  | runs the sample again, edited or not. Only while the pane showing is one whose edits wait on it — the js pane, or a lone fence carrying its own `<script>` |
 
-Both are plain buttons, except that each fills in with the accent while it is the state you
-are in: **Edit** while the editor is open, **Run** while the js pane is the one showing —
-there it is the button your edits are waiting on. The word on the button is its accessible
-name, so there is no `aria-label` or `title` that can come to disagree with it.
+Both are plain buttons; **Edit** fills in with the accent while the editor is open,
+because that one is a toggle and the fill is which way it is. **Run** stays plain —
+appearing at all is its statement, and on every other pane it is not there: edits there
+apply as they are typed, so the button would have nothing to do. The word on the button
+is its accessible name, so there is no `aria-label` or `title` that can come to disagree
+with it.
 
 They sit on the block rather than in the strip above it because that is what they act on,
 and in the bottom-left corner because the top-right is where a docs theme has already put
@@ -679,13 +709,14 @@ custom property with a fallback, and every one of them is namespaced:
 | `--code-preview-fg`        | `inherit`                  | the selected tab, a hovered one     |
 | `--code-preview-fg-muted`  | `#656d76`                  | tabs, buttons, labels, the hint     |
 | `--code-preview-border`    | `#d8d8d8`                  | every border in the element          |
-| `--code-preview-accent`    | `#0969da`                  | focus rings, Edit while open, Run on the js tab, the tooltip, checkboxes and ranges |
+| `--code-preview-accent`    | `#0969da`                  | focus rings, Edit while open, the tooltip, checkboxes and ranges |
 | `--code-preview-danger`    | `#cf222e`                  | the error banner and the transparent-swatch cross |
 | `--code-preview-radius`    | `6px`                      | the outer corners; controls take half |
 | `--code-preview-font-mono` | `ui-monospace, monospace`  | every bit of text in the chrome     |
 
 `--code-preview-danger` is only the error banner, the strip below the code block that
-appears when a sample's own script throws.
+appears when a sample's own script throws — a `role="alert"` element, so a screen reader
+hears the error at the moment the reader's edit causes it.
 
 Each one falls back to its unprefixed name before its default — `--code-preview-bg` to
 `--bg` to `#fff` — so a host page that already defines `--border`, `--bg`, `--accent`,
