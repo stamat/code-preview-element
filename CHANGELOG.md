@@ -16,6 +16,8 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-03
+
 ### Added
 
 - **A sample can be several fences — markup, its css, its js — and each becomes a tab.**
