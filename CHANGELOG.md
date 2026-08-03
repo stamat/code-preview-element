@@ -16,7 +16,48 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+### Changed
+
+- **The console strip moved from under the preview to under the code block, and the error
+  banner has folded into it.** Two boxes said the same kind of thing in two places, and
+  neither was where the reader was looking: the lines are logged by the js in the pane, so
+  they belong against the pane, the way a devtools console sits under the source above it.
+  The block gives up its bottom corners to the strip and the two read as one box.
+
+  An uncaught throw is now a line in that strip rather than a banner below it — in sequence
+  with everything the sample logged on the way there, which is what a broken sample is read
+  from. It keeps everything the banner had: tinted from `--code-preview-danger`, a ⚠ glyph,
+  and `role="alert"`, so it is still announced assertively out of a region (`role="log"`)
+  that is otherwise polite. A logged `console.error` is red but is not an alert — the sample
+  asked for that one.
+
+  **`no-console` no longer silences errors.** It is the answer for a demo that logs on every
+  frame, and no sample is asked to swallow the error that stopped it; the strip is built for
+  that one line if it has to be.
+
+  **DOM the element produces:** `div.code-preview-console[role="log"]` is now the last child
+  of the host, under every pane. `p.code-preview-error` and `data-error` on the host are
+  gone — an uncaught throw is a `p.code-preview-console-line.is-error[role="alert"]` in the
+  strip. `--code-preview-tail` is new and written by the element: the strip's measured
+  height, which the Edit and Run buttons in the block's corner are lifted clear by.
+
+  **CSS an author may be targeting:** `code-preview .code-preview-error` and
+  `code-preview[data-error]` style nothing now. The corner radii are keyed off
+  `code-preview:has(> .code-preview-console:not([hidden]))` instead.
+
+  **Contents of the preview iframe:** a second inline `<script>` in head, beside the console
+  hook, listening for `error` and forwarding it as a `code-preview-error` CustomEvent on the
+  iframe. It is written whether or not `no-console` is set.
+
 ### Fixed
+
+- **A sample that threw during its first parse reported nothing.** The js pane is inlined as
+  a `type="module"`, so a top-level throw is over before the frame's `load` event — which is
+  where the host attached its `error` listener, so the one error the reader who just broke
+  their edit needed to see was the one error never shown. The capture is now an inline
+  script first in the frame's head, armed before anything can run. A sample that brings its
+  own whole document owns its head and gets no hook, so that case is still heard on the
+  frame's window as before.
 
 - **Safari: a preview could vibrate by one pixel, forever.** WebKit lays an iframe's
   innards out a hair differently against each integral height it is given, so the height

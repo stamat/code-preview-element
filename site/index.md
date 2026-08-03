@@ -217,8 +217,8 @@ this page along with the preview. An inline `<script>` is js wherever it was typ
 this sample waits. Change something below and press **Run** in the block's bottom-left
 corner, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> without leaving the editor.
 Run means run, every time — press it without editing anything and the counter starts
-over. And what the sample logs lands in a console strip under the preview, which starts
-over with it.
+over. And what the sample logs lands in a console strip under the block it is logged from,
+which starts over with it — an uncaught throw included, tinted and announced.
 
 <code-preview style="--code-preview-height: 70px">
 

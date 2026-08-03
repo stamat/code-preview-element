@@ -147,19 +147,21 @@ code-preview .code-preview-bar + .code-preview-viewport {
    the toolbar above the preview is the widths', this one is the tabs'. There it is a
    divider, not the widget's top edge: square, and one line per seam — its own top
    border against the preview, and the pane's own line below, so no bottom border here
-   to double it. The console, when a sample has logged, slots in between the two, so the
-   bar keeps the same treatment behind either neighbour. */
-code-preview :is(.code-preview-viewport, .code-preview-console) + .code-preview-bar {
+   to double it. */
+code-preview .code-preview-viewport + .code-preview-bar {
   border-bottom: 0;
   border-radius: 0;
 }
 
-/* The frame's console, under the preview it came out of — on screen while the reader
-   types the js that causes it, which a pane of its own could not be. Appears with the
-   first line and holds the last hundred; between errors and rebuilds it is `hidden`,
-   which works because no `display` is declared for the UA rule to lose to. Mid-stack
-   box: its own top border seams against the viewport (which brings no bottom one), the
-   pane below brings the next line, no corners to round. */
+/* The frame's console, under the code block it is logged from — where a devtools console
+   sits relative to the source above it, and on screen while the reader types the js that
+   causes the lines. Appears with the first line and holds the last hundred; between errors
+   and rebuilds it is `hidden`, which works because no `display` is declared for the UA rule
+   to lose to.
+
+   Bottom of the stack, so it takes the corners the code block would otherwise own, and no
+   top border — the block above brings its own, and two adjacent 1px lines read as one
+   thick misaligned one. */
 code-preview .code-preview-console {
   box-sizing: border-box;
   max-block-size: var(--code-preview-console-height, 10rem);
@@ -167,7 +169,8 @@ code-preview .code-preview-console {
   padding: 0.25rem 0;
   overflow-y: auto;
   border: 1px solid var(--code-preview-border, var(--border, #d8d8d8));
-  border-bottom: 0;
+  border-top: 0;
+  border-radius: 0 0 var(--code-preview-radius, var(--radius, 6px)) var(--code-preview-radius, var(--radius, 6px));
   background: var(--code-preview-bg, var(--bg, #fff));
   color: var(--code-preview-fg-muted, var(--fg-muted, #656d76));
   font: 0.75rem/1.6 var(--code-preview-font-mono, var(--font-mono, ui-monospace, monospace));
@@ -192,6 +195,20 @@ code-preview .code-preview-console-line.is-error {
   color: var(--code-preview-danger, var(--danger, #cf222e));
 }
 
+/* An uncaught throw, which is the one line here nobody asked for: tinted so it is findable
+   in a strip the reader is scrolling, rather than one more red line among the ones the
+   sample chose to print. A transparent wash over whatever --code-preview-bg already is, so
+   it reads as an error in a dark theme too without this sheet knowing which one it is in.
+   The glyph is decoration on a line that already announces itself, so it lives here rather
+   than in text a reader would select along with the message. */
+code-preview .code-preview-console-line[role="alert"] {
+  background: color-mix(in srgb, var(--code-preview-danger, var(--danger, #cf222e)) 8%, transparent);
+}
+
+code-preview .code-preview-console-line[role="alert"]::before {
+  content: "⚠ ";
+}
+
 /* Each strip belongs to the box it sits against, so each holds only what acts on that
    box: the widths above the preview they re-render, the tabs above the code they switch.
    Both start at the leading edge — the actions below are the only thing pushed away. */
@@ -209,10 +226,15 @@ code-preview :is(.code-preview-tabs, .code-preview-widths) {
 
    Absolute against the host and not against the `pre`, for the reason the hint is: a
    copy-button script makes that block relative to position its own button, so this would
-   otherwise resolve against a different box depending on whether the page has one. */
+   otherwise resolve against a different box depending on whether the page has one.
+
+   Which means the bottom of the host is not the bottom of the block whenever the console
+   strip is under it. `--code-preview-tail` is that strip's height, measured and written by
+   the element — nothing here can know it, since the strip grows with what the sample logs.
+   Zero the rest of the time, which is the common case. */
 code-preview .code-preview-actions {
   position: absolute;
-  inset-block-end: 0.375rem;
+  inset-block-end: calc(0.375rem + var(--code-preview-tail, 0px));
   inset-inline-start: 0.5rem;
   display: flex;
   gap: 0.25rem;
@@ -502,7 +524,7 @@ code-preview > pre:focus {
    looking at that corner anyway. */
 code-preview .code-preview-hint {
   position: absolute;
-  inset-block-end: 0.375rem;
+  inset-block-end: calc(0.375rem + var(--code-preview-tail, 0px));
   inset-inline-end: 0.5rem;
   visibility: hidden;
   max-inline-size: calc(100% - 9.5rem);
@@ -851,47 +873,12 @@ code-preview .code-preview-rule {
   overflow-x: auto;
 }
 
-/* A sample whose script threw. The message comes from the frame's own error event,
-   so it names the line rather than just saying something broke. A real element with
-   `role="alert"` rather than the generated content it used to be, so the moment it
-   appears is a moment a screen reader hears about — and the message is selectable,
-   which a pseudo-element's text never is. No `display` of its own: a `p` is a block
-   box already, and leaving the declaration out is what lets the UA's `[hidden]` rule
-   hide it between errors.
-
-   Last box in the stack, so it takes the bottom corners the code block would
-   otherwise own — same trick as the width bar at the top, from the other end.
-   Tinted from --code-preview-danger rather than given a flat red background, so it reads as an
-   error in a dark theme too without this sheet knowing which one it is in: a
-   transparent wash over whatever --code-preview-bg already is. */
-code-preview .code-preview-error {
-  margin: 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--code-preview-border, var(--border, #d8d8d8));
-  /* The code block above brings its own bottom border; two of them read as one thick
-     misaligned line. */
-  border-top: 0;
-  border-radius: 0 0 var(--code-preview-radius, var(--radius, 6px)) var(--code-preview-radius, var(--radius, 6px));
-  background: color-mix(in srgb, var(--code-preview-danger, var(--danger, #cf222e)) 8%, transparent);
-  font: 0.875rem/1.4 var(--code-preview-font-mono, var(--font-mono, ui-monospace, monospace));
-  color: var(--code-preview-danger, var(--danger, #cf222e));
-  /* A stack frame's url is one long unbroken token, and an error is the worst thing
-     to let overflow the box silently. */
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* The glyph is decoration on a message that already announces itself, so it lives in the
-   stylesheet rather than in the text a reader would select along with it. */
-code-preview .code-preview-error::before {
-  content: "⚠ ";
-}
-
-/* With the banner there, whichever pane is showing is no longer the bottom of the
-   object. */
-code-preview[data-error] > pre,
-code-preview[data-error] > .code-wrap > pre,
-code-preview[data-error] > .code-preview-options {
+/* With the strip below it, whichever pane is showing is no longer the bottom of the
+   object. `:not([hidden])`, since the box outlives the lines it held and a strip cleared
+   by a rebuild has to give the corners back. */
+code-preview:has(> .code-preview-console:not([hidden])) > pre,
+code-preview:has(> .code-preview-console:not([hidden])) > .code-wrap > pre,
+code-preview:has(> .code-preview-console:not([hidden])) > .code-preview-options {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }

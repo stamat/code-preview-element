@@ -140,7 +140,7 @@ Reach for something else when the shape of the problem is different:
 | `no-edit`         | leave the code read-only — all of it, or only the panes it names                  |
 | `no-actions`      | drop the Edit and Run buttons — both, or only the one it names                    |
 | `no-toast`        | no event name over the preview — the panel still counts what fires                |
-| `no-console`      | no console strip under the preview, and no console hook in the frame              |
+| `no-console`      | no console strip under the code, and no console hook in the frame — errors still show |
 | `no-shrink`       | never size the preview below its tallest measurement                              |
 | `reload`          | always rebuild the frame on edit, never patch it                                  |
 
@@ -353,21 +353,30 @@ nothing to execute, so it keeps the live typing markup gets.
 
 ### The console
 
-**What the sample logs appears under the preview**, in a strip that exists only once
+**What the sample logs appears under the code block**, in a strip that exists only once
 something has been logged: `console.log`, `info`, `warn`, `error` and `debug` all land
-there, still reaching the browser's own console too. It sits under the preview rather
-than in a tab so the logs are on screen while you type the js that causes them, holds the
-last hundred lines, follows the tail unless you have scrolled up to read, and starts over
-when the frame rebuilds — a new document is a new run, the same bargain the event counts
-make. It is a `role="log"` region, so a screen reader hears new lines without anything
-being re-read.
+there, still reaching the browser's own console too. It sits against the block rather than
+in a tab of its own — where a devtools console sits relative to the source above it, and
+on screen while you type the js that causes the lines. It holds the last hundred, follows
+the tail unless you have scrolled up to read, and starts over when the frame rebuilds — a
+new document is a new run, the same bargain the event counts make. It is a `role="log"`
+region, so a screen reader hears new lines without anything being re-read. The block gives
+up its bottom corners to it, so the two read as one box.
 
 The capture is a small script the element writes first into the frame's head — before
 the deferred `js` urls and the sample's own module, so a top-level `console.log` on the
 first run is caught too. A sample that is a whole document owns its head, so it gets no
-hook and no strip. `no-console` turns the whole thing off, hook and all — the right call
-for a sample that logs on every frame. Uncaught errors are not the console's job either
-way: those go to the [error banner](#custom-properties), which announces itself.
+hook and no strip. `no-console` silences the sample's chatter — the right call for a demo
+that logs on every frame.
+
+**An uncaught error is a line in the same strip**, in sequence with whatever the sample
+logged on the way there: a broken sample is read from the order, not from one message on its
+own. It is the one line nobody asked for, so it is tinted, carries a ⚠, and is a
+`role="alert"` — announced assertively out of a region that is otherwise polite. That
+capture is written into the frame's head alongside the console hook, and for a sharper
+reason: the js pane is a `type="module"`, so a top-level throw is over before the frame's
+load event, and a listener attached there never hears the one error worth hearing.
+`no-console` does not silence it — the strip is built for that line alone if it has to be.
 
 The strip's height is `--code-preview-console-height` (default `10rem`), scrolling past
 it.
@@ -710,13 +719,18 @@ custom property with a fallback, and every one of them is namespaced:
 | `--code-preview-fg-muted`  | `#656d76`                  | tabs, buttons, labels, the hint     |
 | `--code-preview-border`    | `#d8d8d8`                  | every border in the element          |
 | `--code-preview-accent`    | `#0969da`                  | focus rings, Edit while open, the tooltip, checkboxes and ranges |
-| `--code-preview-danger`    | `#cf222e`                  | the error banner and the transparent-swatch cross |
+| `--code-preview-danger`    | `#cf222e`                  | error lines in the console and the transparent-swatch cross |
 | `--code-preview-radius`    | `6px`                      | the outer corners; controls take half |
 | `--code-preview-font-mono` | `ui-monospace, monospace`  | every bit of text in the chrome     |
 
-`--code-preview-danger` is only the error banner, the strip below the code block that
-appears when a sample's own script throws — a `role="alert"` element, so a screen reader
-hears the error at the moment the reader's edit causes it.
+`--code-preview-danger` is the error lines in the [console](#the-console) — the sample's own
+`console.error`, and the tinted `role="alert"` line an uncaught throw adds, which a screen
+reader hears at the moment the reader's edit causes it.
+
+One property is written rather than read: `--code-preview-tail` is the measured height of
+the console strip, published on the element so the Edit and Run buttons in the code block's
+corner can be lifted clear of it. Read it if something of yours has to sit in that corner
+too; setting it only moves the buttons until the next measurement.
 
 Each one falls back to its unprefixed name before its default — `--code-preview-bg` to
 `--bg` to `#fff` — so a host page that already defines `--border`, `--bg`, `--accent`,

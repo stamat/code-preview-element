@@ -533,33 +533,41 @@ test('a sample carrying its own script reloads the frame instead of patching it'
   assert.equal(await rebuilds('&lt;b&gt;hi&lt;/b&gt;', '<b>hi</b><p>the &lt;script&gt; tag</p>'), 0)
 })
 
-// A script error has two audiences and the banner now reaches both: `role="alert"` is
-// what makes its arrival something a screen reader announces — the reader who just typed
-// the edit is who the message is for — and the element (unlike the generated content it
-// replaced) holds text that can be selected and copied into a search.
-test('a script error is announced, and the next edit clears it', async() => {
+// An uncaught throw goes where the sample's own `console.error` goes, in sequence with
+// everything logged on the way there — a broken sample is read from the order, not from one
+// message on its own. It is the one line nobody asked for, so it carries `role="alert"`:
+// announced assertively out of a region that is otherwise polite, and tinted by that
+// attribute so it is findable in a strip the reader is scrolling.
+test('a script error lands in the console, announced, and the next run clears it', async() => {
   const element = mount('css="../../dist/lib.css" reload no-edit')
   const win = element.ownerDocument.defaultView
+  const frame = element.querySelector('iframe')
   await new Promise((resolve) => setTimeout(resolve, 0))
 
-  element.querySelector('iframe').contentWindow.dispatchEvent(
-    new win.ErrorEvent('error', { message: 'go is not defined' })
+  frame.dispatchEvent(new win.CustomEvent('code-preview-log', { detail: { level: 'log', args: ['ready'] } }))
+  // From ERROR_HOOK, not from a listener on the frame's window: the js pane is a module, so
+  // a top-level throw is over before the frame's load event, and a listener attached there
+  // never hears the one error worth hearing.
+  frame.dispatchEvent(
+    new win.CustomEvent('code-preview-error', { detail: { message: 'go is not defined' } })
   )
-  const banner = element.querySelector('.code-preview-error')
-  assert.ok(banner, 'no banner in the page')
-  assert.equal(banner.getAttribute('role'), 'alert')
-  assert.equal(banner.textContent, 'go is not defined')
-  assert.equal(banner.hidden, false)
-  // The attribute stays: the stylesheet keys the corner radii off it, and so may a host's.
-  assert.equal(element.dataset.error, 'go is not defined')
+
+  const lines = () => [...element.querySelectorAll('.code-preview-console-line')]
+  assert.equal(lines().length, 2, 'the throw never reached the console, or arrived twice')
+  assert.deepEqual(lines().map((line) => line.textContent), ['ready', 'go is not defined'])
+  assert.ok(lines()[1].classList.contains('is-error'))
+  assert.equal(lines()[1].getAttribute('role'), 'alert')
+
+  // A logged error is red too and is not an alert: the sample asked for that one.
+  frame.dispatchEvent(new win.CustomEvent('code-preview-log', { detail: { level: 'error', args: ['nope'] } }))
+  assert.equal(lines()[2].getAttribute('role'), null)
 
   // The next applied edit starts clean — an error about text that is gone would be one
-  // the reader cannot act on.
+  // the reader cannot act on, and a rebuild is a new run of the sample.
   element.source = '<b>bye</b>'
   await new Promise((resolve) => setTimeout(resolve, 800))
-  assert.equal(banner.hidden, true)
-  assert.equal(banner.textContent, '')
-  assert.equal(element.dataset.error, undefined)
+  assert.equal(lines().length, 0)
+  assert.equal(element.querySelector('.code-preview-console').hidden, true)
 })
 
 // The strip is fed by the CustomEvent the frame's rewired console dispatches on the
@@ -583,8 +591,9 @@ test('console lines land in a strip under the preview, capped and levelled', asy
   assert.equal(box.getAttribute('role'), 'log')
   assert.equal(box.getAttribute('aria-label'), 'Console')
   assert.equal(box.hidden, false)
-  // Under the preview, above whatever else the stack holds.
-  assert.equal(element.querySelector('.code-preview-viewport').nextElementSibling, box)
+  // Under the code, which is the last box in the stack until an error banner joins it.
+  assert.equal(element.lastElementChild, box)
+  assert.equal(box.previousElementSibling.tagName, 'PRE')
   // Strings print bare, the way a console prints them; the rest are said in one line.
   assert.equal(box.firstElementChild.textContent, 'hi 42 {"a":1} null')
 
@@ -615,6 +624,15 @@ test('no-console: no hook in the frame, and a stray event feeds nothing', () => 
   assert.doesNotMatch(frame.getAttribute('srcdoc'), /code-preview-log/)
   frame.dispatchEvent(new win.CustomEvent('code-preview-log', { detail: { level: 'log', args: ['hi'] } }))
   assert.equal(element.querySelector('.code-preview-console'), null)
+
+  // The throws are not part of the bargain: `no-console` is about a sample that logs more
+  // than anyone wants to watch, and no sample is asked to swallow the error that stopped it.
+  // The strip is built for that one line and holds nothing else.
+  assert.match(frame.getAttribute('srcdoc'), /code-preview-error/)
+  frame.dispatchEvent(new win.CustomEvent('code-preview-error', { detail: { message: 'go is not defined' } }))
+  const lines = [...element.querySelectorAll('.code-preview-console-line')]
+  assert.deepEqual(lines.map((line) => line.textContent), ['go is not defined'])
+  assert.equal(lines[0].getAttribute('role'), 'alert')
 })
 
 // Neither strip is built without something to put in it: the code's holds the tabs and a
@@ -755,6 +773,23 @@ test('the keyboard shortcut runs a js sample that has no Run button', async() =>
   await Promise.resolve()
   assert.equal(event.defaultPrevented, true, 'the shortcut was not claimed')
   assert.equal(writes, 1, 'the edit had nowhere to go')
+})
+
+// The panes are registered before the editors are attached, so the strip's answer to "does
+// the pane showing have an editor in it" is first taken while none of them do. Left there
+// it hid Edit on the tab that was already selected until the reader clicked a tab.
+test('edit is offered on the tab that is selected from the start', () => {
+  const element = mount('css="../../dist/lib.css"', `
+    <pre><code class="hljs language-html">&lt;b&gt;hi&lt;/b&gt;</code></pre>
+    <pre><code class="hljs language-scss">$accent: red;</code></pre>
+  `, { setup: (win) => { win.document.execCommand = () => true } })
+
+  assert.equal(element.classList.contains('is-code-pane'), true,
+    'the default tab is an editor\'s, and the actions were hidden on it')
+
+  // And still false where it should be — a read-only pane has no editor for Edit to open.
+  element.setAttribute('tab', 'scss')
+  assert.equal(element.classList.contains('is-code-pane'), false)
 })
 
 test('edit opens the pane that is showing, and the mode follows the reader across tabs', () => {
@@ -1460,7 +1495,8 @@ test('the css pane is last in head, and the js pane is a deferred module in body
 
 test('a closing tag inside a pane cannot end the tag it is inlined into', () => {
   // Without the console hook, which brings a legitimate script tag of its own — the
-  // count below is about the *inlined* text not closing early.
+  // count below is about the *inlined* text not closing early. The error hook is not
+  // optional and is counted for.
   const doc = buildSrcdoc('<p>hi</p>', {
     head: '',
     script: 'const end = "</script>"',
@@ -1469,8 +1505,8 @@ test('a closing tag inside a pane cannot end the tag it is inlined into', () => 
   })
   assert.match(doc, /const end = "<\\\/script>"/)
   assert.match(doc, /\/\* <\\\/style> \*\//)
-  // Nothing closed early: one script tag in, one script tag out.
-  assert.equal(doc.match(/<\/script>/g).length, 1)
+  // Nothing closed early: the error hook and the pane, one closing tag each.
+  assert.equal(doc.match(/<\/script>/g).length, 2)
   assert.equal(doc.match(/<\/style>/g).length, 1)
 })
 

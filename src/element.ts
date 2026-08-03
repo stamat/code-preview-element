@@ -101,6 +101,17 @@ const CONSOLE_HOOK = '<script>for(const l of ["log","info","warn","error","debug
   'const n=console[l].bind(console);console[l]=(...a)=>{n(...a);' +
   'try{frameElement.dispatchEvent(new CustomEvent("code-preview-log",{detail:{level:l,args:a}}))}catch{}}}</script>'
 
+// The sample's own uncaught errors, forwarded the same way and for a timing reason the
+// console hook does not have: the js pane is a `type="module"`, so a top-level throw
+// happens during the parse — long before the frame's load event — and a listener the host
+// attaches on load has already missed the one error a reader who just broke their edit
+// needs to see. Inline and beside the console hook, so it is armed before anything can run.
+//
+// Not gated on `no-console`: that attribute is about a sample that logs too much to watch,
+// and a sample that throws is not one of those.
+const ERROR_HOOK = '<script>addEventListener("error",(e)=>{' +
+  'try{frameElement.dispatchEvent(new CustomEvent("code-preview-error",{detail:{message:e.message}}))}catch{}})</script>'
+
 // How much console a strip holds before the oldest line falls off. A demo that logs more
 // than this is a demo being profiled, and the browser's own console is where that reads.
 const LOG_LIMIT = 100
@@ -233,10 +244,11 @@ export function buildSrcdoc(
   opts: { css?: string[], js?: string[], head?: string | null, style?: string, script?: string, lang?: string, console?: boolean } = {}
 ): string {
   if (isDocument(html)) return html
-  // The console hook, first thing after the charset so nothing can log before it is
-  // wired. Off only when asked (`no-console`) — a sample that owns its whole document
-  // never gets one either, since it owns its head; that is the passthrough above.
-  const hook = opts.console === false ? '' : CONSOLE_HOOK
+  // The hooks, first thing after the charset so nothing can log or throw before they are
+  // wired. The console half is off when asked (`no-console`); a sample that owns its whole
+  // document gets neither, since it owns its head — that is the passthrough above, and the
+  // one case the host still listens for errors on the frame itself.
+  const hook = (opts.console === false ? '' : CONSOLE_HOOK) + ERROR_HOOK
   // The host page's language, carried onto the frame's `<html>`: a screen reader picks
   // its voice per document, and a frame that does not say is read in the user's default —
   // wrong exactly where the docs page said otherwise. The `<title>` is the same claim at
@@ -390,11 +402,16 @@ export class CodePreview extends HTMLElement {
   // Whether the open editor's `aria-label` is ours to take back — a markup-supplied one
   // is not, and `exitEdit` must not strip a name the page put there itself.
   private labelled = false
-  // The error banner, once a sample has thrown. Kept so a later error reuses the box.
-  private errorBox?: HTMLElement
-  // The console strip, once a sample has logged. Built on the first line, like the
-  // banner: a sample that never logs pays no box for it.
+  // The console strip, once a sample has logged or thrown. Built on the first line: a
+  // sample that does neither pays no box for it.
   private logBox?: HTMLElement
+  // Watches the strip for its height, which is what the Edit and Run buttons in the block's
+  // bottom corner have to be lifted clear of; see `tailWatch`.
+  private tail?: ResizeObserver
+  // Whether the document in the frame is one this element wrote, and so one carrying
+  // `ERROR_HOOK`. A sample that brings its own `<html>` is passed through untouched and
+  // has no hook in it, which is the one case the host has to listen for errors itself.
+  private hooked = false
   // The rebuild button, once this sample is one that can need it. Built on demand rather
   // than with Edit, because whether a sample runs anything is a question about its text,
   // and its text is edited — see `buildRun`.
@@ -463,6 +480,7 @@ export class CodePreview extends HTMLElement {
     // itself, which is the one element both realms can name. On before any document is in
     // the frame, so the earliest inline log already has a listener.
     frame.addEventListener('code-preview-log', this.onFrameLog)
+    frame.addEventListener('code-preview-error', this.onFrameError)
 
     // The frame lives in a wrapper rather than directly in the element, because
     // `viewport-width` scales the frame and something unscaled has to own the
@@ -951,7 +969,6 @@ export class CodePreview extends HTMLElement {
     // something unchanged, because that is what it is for.
     if (last && last.html === next.html && last.css === next.css && last.js === next.js) return
     this.rendered = next
-    this.clearError()
     // The sample itself changed, so the last measurement no longer describes it — an
     // edit that deletes half the markup has to be able to shrink the preview back.
     this.peak = 0
@@ -986,6 +1003,7 @@ export class CodePreview extends HTMLElement {
       // parse — the hook is first in head so nothing can log ahead of it — and a clear
       // that waits for `load` arrives after those lines and wipes them.
       this.clearLog()
+      this.hooked = !isDocument(next.html)
       frame.srcdoc = buildSrcdoc(next.html, {
         ...this.assets,
         style: next.css,
@@ -1310,43 +1328,53 @@ export class CodePreview extends HTMLElement {
     this.run = this.action('run', 'Run', ICON.run, this.runNow)
   }
 
-  // The banner under the code block. A real element rather than the `::after` it once
-  // was, because generated content changes silently: `role="alert"` is what makes a
-  // script error something a screen reader hears at the moment it happens, and the
-  // reader who just typed the edit is the one audience this banner exists for. It is
-  // also selectable now, and an error message is the one string here worth copying into
-  // a search box. `data-error` stays alongside it — the stylesheet keys the corner radii
-  // off the attribute, and so may a host page's.
-  private showError(message: string): void {
-    this.dataset.error = message
-    if (!this.errorBox) {
-      const box = document.createElement('p')
-      box.className = 'code-preview-error'
-      box.setAttribute('role', 'alert')
-      this.appendChild(box)
-      this.errorBox = box
-    }
-    this.errorBox.hidden = false
-    this.errorBox.textContent = message
-  }
-
-  private clearError(): void {
-    delete this.dataset.error
-    if (this.errorBox) {
-      this.errorBox.hidden = true
-      this.errorBox.textContent = ''
-    }
+  // The strip sits between the code block and the bottom of the element, which is what the
+  // Edit and Run buttons in the block's corner are positioned against. Its height is
+  // published as a variable the stylesheet lifts that corner by, so the buttons stay on the
+  // block they act on instead of floating over the logs.
+  //
+  // Measured rather than reasoned about: the strip grows line by line up to its cap, and how
+  // many lines a message wraps to is a question about this column's width.
+  private tailWatch(box: HTMLElement): void {
+    if (typeof ResizeObserver === 'undefined') return
+    this.tail ??= new ResizeObserver(() => {
+      this.style.setProperty('--code-preview-tail', box.hidden ? '0px' : `${box.offsetHeight}px`)
+    })
+    this.tail.observe(box)
   }
 
   // A line out of the frame's console. The strip is not a live region by class alone —
   // `role="log"` is, politely, which is exactly a console's temperament: additions are
   // announced, nothing re-reads, and `no-console` is the answer for a sample that would
-  // not shut up. Under the preview rather than a pane of its own, so the logs are on
-  // screen while the reader types the js that causes them.
+  // not shut up.
   private onFrameLog = (event: Event): void => {
-    if (this.hasAttribute('no-console')) return
     const { level, args } = (event as CustomEvent<{ level?: unknown, args?: unknown }>).detail ?? {}
     if (typeof level !== 'string' || !Array.isArray(args)) return
+    this.logLine(level, args.map(logText).join(' '))
+  }
+
+  // An uncaught throw inside the sample, from ERROR_HOOK — or, for a sample that brought its
+  // own document and so has no hook, from the listener in `onFrameLoad`. It goes where the
+  // sample's own `console.error` goes, in sequence with everything logged on the way there:
+  // a broken sample is read from the order, not from one message on its own.
+  //
+  // `alert` is the difference from a logged error. This one nobody asked to be told about
+  // and the reader who just typed the edit has to hear it, so the line announces itself
+  // assertively out of a region that is otherwise polite.
+  private onFrameError = (event: Event): void => {
+    const { message } = (event as CustomEvent<{ message?: unknown }>).detail ?? {}
+    this.logLine('error', typeof message === 'string' && message ? message : 'Script error', true)
+  }
+
+  // One line in the strip. Under the code rather than under the preview or in a pane of
+  // its own: it is the js the reader is typing that logs, so the lines belong against the
+  // block being typed in, where a devtools console sits relative to the source above it.
+  //
+  // `no-console` silences the sample's chatter and not its throws: it is the answer for a
+  // demo that logs on every frame, and no sample is asked to swallow the error that stopped
+  // it. An error is the one thing that can still build the strip there.
+  private logLine(level: string, text: string, alert = false): void {
+    if (this.hasAttribute('no-console') && level !== 'error') return
 
     if (!this.logBox) {
       const box = document.createElement('div')
@@ -1354,9 +1382,9 @@ export class CodePreview extends HTMLElement {
       box.setAttribute('role', 'log')
       box.setAttribute('aria-label', 'Console')
       box.hidden = true
-      // Directly under the preview, whatever else the stack holds — `after` on the
-      // viewport lands it ahead of the tab strip that was put there at upgrade.
-      this.viewport?.after(box)
+      // Last in the stack, under every pane.
+      this.appendChild(box)
+      this.tailWatch(box)
       this.logBox = box
     }
     const box = this.logBox
@@ -1364,7 +1392,8 @@ export class CodePreview extends HTMLElement {
     const line = document.createElement('p')
     line.className = 'code-preview-console-line' +
       (level === 'error' ? ' is-error' : level === 'warn' ? ' is-warn' : '')
-    line.textContent = args.map(logText).join(' ')
+    if (alert) line.setAttribute('role', 'alert')
+    line.textContent = text
 
     // Follow the tail only if the reader was at it: a console that yanks the scroll back
     // down while they read an old line is worse than one that falls behind.
@@ -1418,12 +1447,15 @@ export class CodePreview extends HTMLElement {
       this.resize.observe(doc.documentElement)
       if (this.viewport) this.resize.observe(this.viewport)
     }
-    // srcdoc inherits the parent's origin, so the page can hear the sample's own
-    // errors. Without this a broken edit just looks like a preview that quietly
-    // stopped working.
-    this.frame?.contentWindow?.addEventListener('error', (event) => {
-      this.showError((event as ErrorEvent).message || 'Script error')
-    })
+    // srcdoc inherits the parent's origin, so the page can hear the sample's own errors.
+    // Only for a document this element did not write: everything else carries ERROR_HOOK,
+    // which catches the throws that happen before this event ever fires, and two listeners
+    // for one error is two lines in the console strip.
+    if (!this.hooked) {
+      this.frame?.contentWindow?.addEventListener('error', (event) => {
+        this.logLine('error', (event as ErrorEvent).message || 'Script error', true)
+      })
+    }
     this.fit()
     // A loaded document is the first moment anything can be computed out of it, which is
     // where the options panel gets the default for a property the manifest documents
@@ -1638,6 +1670,10 @@ export class CodePreview extends HTMLElement {
     // mid-click on something else. A sample that merely *reloads* (a `js` url, `reload`)
     // gets none: its edits follow the typing now, so there is nothing for Run to apply.
     if (this.panes.get('js')?.editMode || hasScript(this.sources().html)) this.buildRun()
+    // The panes were registered before any of this, so the strip's answer to "is the pane
+    // showing an editor's" was taken when no pane had an editor yet — which hid the Edit
+    // button on the tab that was already selected until the reader clicked it.
+    this.syncPanes()
     this.syncRunPane()
   }
 
