@@ -5,6 +5,7 @@
   --card-border: #d0d7de;
   --card-bg: #f6f8fa;
   --card-fg: #1f2328;
+  --guide-bg: #fbe4ef;
 
   color-scheme: light;
 }
@@ -13,6 +14,7 @@
   --card-border: #30363d;
   --card-bg: #161b22;
   --card-fg: #e6edf3;
+  --guide-bg: #3a1a2a;
 
   color-scheme: dark;
 }
@@ -99,25 +101,35 @@ demo-badge[tone="loud"] { box-shadow: 0 0 0 2px currentcolor; }
    sees where each breakpoint actually fires instead of being told.
 
    Fixed and inset, for the rule the attribute has: scenery that is in flow measures as
-   content, and the preview would grow by the height of its own backdrop. The padding is
-   the frame's default `body{padding:1rem}`, and the gap is `.cols`' own — the guides are
-   only guides if they sit exactly where the columns do. */
+   content, and the preview would grow by the height of its own backdrop. The inline
+   padding is the frame's default `body{padding:1rem}`, and the gap is `.cols`' own — the
+   guides are only guides if they sit exactly where the columns do. No block padding: the
+   bands run the frame's full height, so they read as the columns' territory rather than
+   as three boxes floating in it. */
 .guides {
   position: fixed;
   inset: 0;
+  /* Behind the sample, not over it: positioned scenery paints above in-flow content, which
+     an outline got away with and a fill does not. Nothing in the frame paints a background
+     — `body` sets only margin and padding — so a negative index lands under the sample and
+     still over the canvas. */
+  z-index: -1;
   display: grid;
   gap: 1rem;
-  padding: 1rem;
+  padding-inline: 1rem;
   grid-template-columns: 1fr;
 }
 
 /* Three guides in the markup, and however many the current breakpoint uses are shown: at
    one column the other two would stack into rows underneath, which is three boxes down the
-   page rather than the one full-height column that is true there. */
+   page rather than the one full-height column that is true there.
+
+   A fill rather than a dashed outline: an outline around the sample's own bordered cards
+   is two rectangles saying the same thing, and the sample is what the reader is meant to
+   be looking at. A tint states where the column is and stays behind. */
 .guides > i {
   display: none;
-  border: 1px dashed var(--card-border);
-  border-radius: 8px;
+  background: var(--guide-bg);
 }
 
 .guides > i:first-child { display: block; }
