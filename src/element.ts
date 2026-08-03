@@ -37,6 +37,8 @@
 //   css              whitespace-separated stylesheet urls for the frame
 //   js               whitespace-separated script urls for the frame
 //   head             extra head html, replacing the default body-padding style
+//   backdrop         id of a `<template>` on the host page whose markup is laid under
+//                    every sample in this frame — scenery, never a pane, never edited
 //   theme-attribute  attribute the host page's [data-theme] is mirrored onto
 //   viewport-width   render at this css width and scale it down to fit, so the
 //                    sample's wider media queries apply (see scaleToFit)
@@ -241,7 +243,7 @@ export function scaleToFit(available: number, emulated: number): number {
 // above are silent rather than loud.
 export function buildSrcdoc(
   html: string,
-  opts: { css?: string[], js?: string[], head?: string | null, style?: string, script?: string, lang?: string, console?: boolean } = {}
+  opts: { css?: string[], js?: string[], head?: string | null, style?: string, script?: string, lang?: string, console?: boolean, backdrop?: string } = {}
 ): string {
   if (isDocument(html)) return html
   // The hooks, first thing after the charset so nothing can log or throw before they are
@@ -284,9 +286,11 @@ export function buildSrcdoc(
   // module is deferred too, and deferred scripts run in document order, so this one runs
   // after every url in `js`.
   const module = opts.script ? `<script type="module">${inlineSafe(opts.script)}</script>` : ''
+  // The backdrop first in body, so a sample that stacks nothing still sits over it and a
+  // sample that does has one fewer thing above it to out-index. See `backdrop`.
   return '<!DOCTYPE html><html' + lang + '><head><meta charset="utf-8"><title>Preview</title>' + hook +
     styles + (opts.head ?? DEFAULT_HEAD) + style + scripts +
-    '</head><body>' + html + module + '</body></html>'
+    '</head><body>' + (opts.backdrop ?? '') + html + module + '</body></html>'
 }
 
 // Show or hide one pane.
@@ -443,6 +447,9 @@ export class CodePreview extends HTMLElement {
   // Kept here rather than in the panel because a rebuilt frame is a new document with a
   // new head, and re-applying it is `onFrameLoad`'s job.
   private optionsCss = ''
+  // The resolved `backdrop` template, or '' for no backdrop and for one that did not
+  // resolve. `undefined` is "not looked up yet"; see the getter.
+  private scenery?: string
   connectedCallback(): void {
     // Moving the element in the dom re-runs this; build once, or the move costs a
     // second viewport and a second width bar stacked on the first. Only the theme
@@ -939,6 +946,34 @@ export class CodePreview extends HTMLElement {
     style.textContent = this.optionsCss
   }
 
+  // Markup laid under every sample in this frame — a grid overlay, a baseline ruler, a
+  // device bezel: scenery, and never the sample. It is not a fence, so it is not a pane,
+  // is not highlighted and cannot be typed into; the code block still shows only what the
+  // page is documenting, which is the whole reason this is not simply pasted into the
+  // sample. Named by the id of a `<template>` on the host page rather than written into
+  // the attribute, so one partial in a layout dresses every preview on the page — and
+  // because a template is inert markup the host page never renders or styles.
+  //
+  // Whatever it draws has to be out of flow — `position: fixed` is what a full-height
+  // grid guide wants anyway — or it measures as content and the preview grows by it.
+  //
+  // A sample that brings its own `<html>` gets none of it, exactly as `css`, `js` and
+  // `head` are ignored there: that sample owns its document.
+  //
+  // Read once and kept. `render` asks on every keystroke, and a typo'd id is worth one
+  // warning rather than one per character.
+  private get backdrop(): string {
+    if (this.scenery === undefined) {
+      const id = this.getAttribute('backdrop')
+      const template = id ? document.getElementById(id) : null
+      if (id && !(template instanceof HTMLTemplateElement)) {
+        console.warn(`code-preview: backdrop="${id}" matches no <template> on this page`)
+      }
+      this.scenery = template instanceof HTMLTemplateElement ? template.innerHTML : ''
+    }
+    return this.scenery
+  }
+
   private get assets(): { css: string[], js: string[], head: string | null } {
     return {
       css: list(this.getAttribute('css')),
@@ -995,7 +1030,10 @@ export class CodePreview extends HTMLElement {
       // to be carried over by hand, or `rendered` records it as applied and it is lost
       // until something else forces a reload.
       if (last && last.css !== next.css) this.applySampleStyle(next.css)
-      this.frame!.contentDocument!.body.innerHTML = next.html
+      // Re-laid with the sample rather than kept: the write is a whole-body replacement,
+      // so anything not in this string is gone. Rebuilding a dozen inert divs per
+      // keystroke is cheaper than owning a wrapper the sample would then be nested in.
+      this.frame!.contentDocument!.body.innerHTML = this.backdrop + next.html
       this.fit()
     } else {
       this.loaded = false
@@ -1009,7 +1047,8 @@ export class CodePreview extends HTMLElement {
         style: next.css,
         script: next.js,
         lang: document.documentElement.lang,
-        console: !this.hasAttribute('no-console')
+        console: !this.hasAttribute('no-console'),
+        backdrop: this.backdrop
       })
     }
   }

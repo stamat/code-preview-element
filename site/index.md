@@ -108,6 +108,9 @@ description: Live, editable HTML samples in an isolated iframe — the element d
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L8 8.94l3.72-3.72a.749.749 0 0 1 1.06 0Z'/%3E%3C/svg%3E") center / contain no-repeat;
     transition: rotate 250ms ease;
   }
+  /* The FAQ's is the trailing one, so it takes the leftover width rather than sitting
+     against the question — a run of rows lines its carets up at the far edge. */
+  .faq > details > summary::after { margin-inline-start: auto; }
   .toc-disclosure[open] > summary::before,
   .faq > details[open] > summary::after { rotate: 180deg; }
   @media (prefers-reduced-motion: reduce) {
@@ -211,6 +214,10 @@ Live-code components are not a new idea. What is specific here:
   styles instead of being sealed off from them by a shadow root, and the page's
   `[data-theme]` is mirrored into the frame — so a demo goes dark with the docs around it.
   A tool that sandboxes its preview onto a separate origin structurally cannot do that.
+- **Scenery behind the sample.** `backdrop` lays a `<template>` from your page under every
+  preview that names it — column guides, a baseline ruler, a device bezel. Written once in
+  the layout, and never a tab, never highlighted, never editable: the code block still
+  shows only the sample.
 - **Several fences, several tabs.** Markup, css and js written as the three blocks they
   are become three panes, the language read off each fence. Nothing to configure.
 - **An options panel from a manifest you already ship.** The controls are generated from
@@ -302,6 +309,49 @@ watch it fall back on its own.
   <div class="card">
     <h3>Three</h3>
     <p>Stacked below that.</p>
+  </div>
+</div>
+```
+
+</code-preview>
+
+## Scenery behind the sample
+
+Some samples need a set, not just a stage. `backdrop` names a `<template>` on this page by
+id, and its markup goes into the frame underneath the sample — column guides here, a
+baseline ruler or a device bezel elsewhere. It is scenery and not sample: it is not a
+fence, so it is not a tab, is not highlighted and cannot be typed into, and the code block
+below still shows only the three cards. Write the template once in your layout and every
+preview on the page opts in with one attribute.
+
+The guides are built from the same breakpoints `.cols` uses, inside the same frame, so
+they answer the same width — press the buttons and watch the columns land on them.
+
+<div><template id="grid-guides"><div class="guides" aria-hidden="true"><i></i><i></i><i></i></div></template></div>
+{# The wrapping div is markdown's, not the element's: `template` is not on marked's list of
+   block tags, so the line on its own comes back inside a `<p>`. A div is on the list. In a
+   real site this lives in the layout, where there is no markdown to negotiate with.
+   `aria-hidden` because three empty boxes are decoration, and a screen reader reading the
+   set before every sample is worse than no set at all. #}
+
+<code-preview css="sample.css" theme-attribute="data-theme" backdrop="grid-guides" viewport-width="1024" viewport-widths="375 768 1024" style="--code-preview-height: 92px">
+{# Same reservation as the scaled preview above, and for the same reason: this one is
+   scaled by column/1024 too, and the backdrop is `position: fixed`, so it adds nothing to
+   what is measured. #}
+
+```html
+<div class="cols">
+  <div class="card">
+    <h3>One</h3>
+    <p>Three across above 900px.</p>
+  </div>
+  <div class="card">
+    <h3>Two</h3>
+    <p>Two across above 600px.</p>
+  </div>
+  <div class="card">
+    <h3>Three</h3>
+    <p>The guides move with them.</p>
   </div>
 </div>
 ```

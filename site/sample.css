@@ -92,3 +92,42 @@ demo-badge[tone="loud"] { box-shadow: 0 0 0 2px currentcolor; }
 @media (min-width: 900px) {
   .cols { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* Scenery for `backdrop`, laid under the sample by the element: the columns `.cols` lands
+   on. It repeats the breakpoints above rather than inventing its own, which is the whole
+   point — the guides move when the sample moves, so a reader watching the width buttons
+   sees where each breakpoint actually fires instead of being told.
+
+   Fixed and inset, for the rule the attribute has: scenery that is in flow measures as
+   content, and the preview would grow by the height of its own backdrop. The padding is
+   the frame's default `body{padding:1rem}`, and the gap is `.cols`' own — the guides are
+   only guides if they sit exactly where the columns do. */
+.guides {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  grid-template-columns: 1fr;
+}
+
+/* Three guides in the markup, and however many the current breakpoint uses are shown: at
+   one column the other two would stack into rows underneath, which is three boxes down the
+   page rather than the one full-height column that is true there. */
+.guides > i {
+  display: none;
+  border: 1px dashed var(--card-border);
+  border-radius: 8px;
+}
+
+.guides > i:first-child { display: block; }
+
+@media (min-width: 600px) {
+  .guides { grid-template-columns: repeat(2, 1fr); }
+  .guides > i:nth-child(-n+2) { display: block; }
+}
+
+@media (min-width: 900px) {
+  .guides { grid-template-columns: repeat(3, 1fr); }
+  .guides > i { display: block; }
+}

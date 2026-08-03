@@ -42,6 +42,10 @@ Live-code components are not a new idea. What is specific here:
   `[data-theme]` is mirrored into the frame, so a demo goes dark with the docs around it. A
   tool that sandboxes its preview onto a separate origin structurally cannot do that second
   part.
+- **[Scenery behind the sample.](#scenery-behind-the-sample)** `backdrop` lays a
+  `<template>` from your page under every preview that names it — column guides, a baseline
+  ruler, a device bezel. Written once in the layout, and never a tab, never highlighted,
+  never editable: the code block still shows only the sample.
 - **[Several fences, several tabs.](#several-fences-several-tabs)** Markup, CSS and JS
   written as the three blocks they are become three panes, the language read off each
   fence. Nothing to configure.
@@ -157,6 +161,7 @@ page loading the real stylesheet.
 | `css`             | whitespace-separated stylesheet urls for the frame                                |
 | `js`              | whitespace-separated script urls for the frame                                    |
 | `head`            | extra head html, replacing the default `body{margin:0;padding:1rem}`              |
+| `backdrop`        | id of a `<template>` on the page, laid under the sample as scenery                |
 | `theme-attribute` | attribute the host page's `[data-theme]` is mirrored onto, inside the frame       |
 | `viewport-width`  | render at this css width and scale it down to fit                                 |
 | `viewport-widths` | whitespace-separated widths to offer as buttons                                   |
@@ -190,6 +195,49 @@ It is the escape hatch for what `css` and `js` cannot say — a `<meta>`, a font
 an import map. It lands after the `css` links and before the `js` scripts, so a rule
 here outranks one from a stylesheet at equal specificity. A sample that is already a
 whole `<html>` document is used verbatim, and all three attributes are ignored.
+
+## Scenery behind the sample
+
+Some samples need a set, not just a stage: column guides behind a layout demo, a
+baseline ruler behind type, a device bezel. `backdrop` names a `<template>` on the host
+page by id, and its markup is laid in the frame's body underneath every sample this
+element renders — before it in the document, so the sample stacks over it.
+
+It is scenery, not sample. It is not a fence, so it is not a tab, is not highlighted and
+cannot be typed into; the code block keeps showing only what the page is documenting.
+Write the template once — in the layout, in a partial — and every preview on the page
+opts in with one attribute:
+
+```html
+<template id="grid-guides">
+  <div class="grid-guides" aria-hidden="true">
+    <div class="container grid grid-gutter">
+      <div class="col-3 col-lg-1"><i></i></div>
+      <!-- …eleven more… -->
+    </div>
+  </div>
+</template>
+
+<code-preview css="../../dist/my-library.css" backdrop="grid-guides" viewport-widths="480 768 1024">
+  <pre><code class="language-html">&lt;div class="container grid grid-gutter"&gt;…&lt;/div&gt;</code></pre>
+</code-preview>
+```
+
+Because the guides are built from the library's own classes inside the frame, they
+answer the frame's width — so they re-flow with the sample as the `viewport-widths`
+buttons change it, and the reader watches the layout land on the columns at each
+breakpoint.
+
+Two rules for what the template draws. It has to be **out of flow** —
+`position: fixed` with `inset: 0`, which is what a full-bleed guide wants anyway — or it
+measures as content and the preview grows by its height. And it should be
+`aria-hidden="true"`: a dozen empty divs are decoration, and a screen reader reading the
+scenery before every sample is worse than no scenery at all.
+
+Styling it is the host page's business, through `css`: the template is inert markup that
+the host page never renders, so it takes its look from the stylesheets already going into
+the frame. A sample that is already a whole `<html>` document gets no backdrop, for the
+same reason it gets no `css`, `js` or `head` — it owns its document.
 
 ## Responsive samples
 

@@ -118,6 +118,14 @@ test('head defaults to body padding and can be replaced', () => {
   assert.match(buildSrcdoc('<p>x</p>', { head: '<style>body{padding:0}</style>' }), /padding:0/)
 })
 
+// Scenery goes under the sample and stays out of the code: first in body, so the sample
+// stacks over it, and absent entirely from a sample that owns its own document.
+test('a backdrop lands under the sample, and a whole document gets none', () => {
+  const doc = buildSrcdoc('<p>x</p>', { backdrop: '<div class="guides"></div>' })
+  assert.match(doc, /<body><div class="guides"><\/div><p>x<\/p><\/body>/)
+  assert.equal(buildSrcdoc('<!doctype html><html><body>x', { backdrop: '<div></div>' }), '<!doctype html><html><body>x')
+})
+
 test('a url with a quote in it cannot close the attribute it sits in', () => {
   assert.match(buildSrcdoc('<p>x</p>', { css: ['a".css'] }), /href="a&quot;\.css"/)
 })
@@ -182,6 +190,24 @@ function openEditor(element) {
   element.querySelector('.code-preview-edit').click()
   return element.querySelector('[contenteditable]')
 }
+
+// The other half of the `buildSrcdoc` backdrop test: that the element finds the template
+// by id, and that scenery stays out of the code — a `<template>` is not a pane, so a page
+// that has one still has exactly the fences it wrote.
+test('a backdrop template reaches the frame and is not a pane', () => {
+  const element = mount('no-edit backdrop="guides"', undefined, {
+    setup: (window) => {
+      const template = window.document.createElement('template')
+      template.id = 'guides'
+      template.innerHTML = '<div class="guides"></div>'
+      window.document.body.append(template)
+    }
+  })
+
+  assert.match(element.querySelector('iframe').getAttribute('srcdoc') ?? '',
+    /<body><div class="guides"><\/div><button class="btn">Hi<\/button><\/body>/)
+  assert.equal(element.querySelectorAll('.code-preview-tab').length, 0, 'scenery is not a tab')
+})
 
 test('the element renders through srcdoc, not into about:blank', () => {
   const element = mount()
