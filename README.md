@@ -8,9 +8,10 @@ documented example and what it actually does cannot drift.
 **[Live demo →](https://stamat.github.io/code-preview-element/)** — the element,
 demonstrated by the element.
 
+- [Features](#features)
+- [Intended use](#intended-use)
 - [Install](#install)
 - [How it works](#how-it-works)
-- [Why this one](#why-this-one)
 - [Attributes](#attributes)
 - [Responsive samples](#responsive-samples)
 - [Wiring it up](#wiring-it-up)
@@ -22,6 +23,65 @@ demonstrated by the element.
 - [Styling](#styling) — [Reserved height](#reserved-height)
 - [Known limits](#known-limits)
 - [Development](#development)
+
+## Features
+
+Live-code components are not a new idea. What is specific here:
+
+- **It wraps the code block you already have.** Every other tool in this space asks you to
+  author demos in its own format — a JS function, a multi-file manifest, a custom fence.
+  This takes the `<pre><code>` your site generator already emitted, hljs classes and all,
+  and upgrades it in place. Nothing to port, and the page is a plain code block if the
+  script never loads.
+- **Emulated viewport widths.** [`viewport-width`](#responsive-samples) gives the frame a
+  genuine CSS width and scales the result down to fit, so a sample's desktop media queries
+  actually apply inside a 700px docs column. `viewport-widths` turns that into a row of
+  buttons.
+- **It lives in the light DOM.** The code block keeps the host page's syntax theme and
+  prose styles instead of being sealed off from them by a shadow root, and the host page's
+  `[data-theme]` is mirrored into the frame, so a demo goes dark with the docs around it. A
+  tool that sandboxes its preview onto a separate origin structurally cannot do that second
+  part.
+- **[Several fences, several tabs.](#several-fences-several-tabs)** Markup, CSS and JS
+  written as the three blocks they are become three panes, the language read off each
+  fence. Nothing to configure.
+- **[An options panel](#the-options-panel) from a manifest you already ship.** The controls
+  are generated from `custom-elements.json` — the format the ecosystem has, generated from
+  your JSDoc, not one invented here.
+- **[A console strip](#the-console) under the block.** What the sample logs, and an
+  uncaught throw, land against the code that caused them rather than in a devtools panel.
+- **[Editing is asked for](#editing-is-asked-for-not-assumed), not assumed.** A block is a
+  code block until you press Edit; a page full of quietly editable blocks is a keyboard
+  trap in the middle of the prose.
+- **Two script tags and no build step.** 7.5KB gzipped on a docs site that already ships
+  highlight.js, 23KB standalone — see [Three builds](#three-builds). No service worker, no
+  bundler config, no origin to serve demo files from.
+
+## Intended use
+
+Documentation for something you can demonstrate in markup — a CSS library, a custom
+element, anything whose api is an attribute and a class name. The sample is the
+`<pre><code>` your site generator already emitted, and the preview above it is that exact
+text rendered, so the example on the page and the thing it documents cannot drift apart.
+
+It assumes the code is yours. The frame is a `srcdoc` document with no `sandbox`, which is
+what buys the height measurement and the theme write — it is also same-origin, so a sample
+can reach the page around it. That is the right trade for prose you wrote plus edits a
+reader types into their own browser: the worst case is a reader XSSing themselves, and
+nothing is stored or shared. It is the wrong one for a playground whose samples arrive in a
+url, which is somebody else's script running on your origin.
+
+And demo code is never built — it goes into the frame verbatim. No TypeScript, no JSX, no
+bare `import`s resolved from npm, no fork-and-keep. Reach for something else when the shape
+of the problem is that instead:
+
+| Instead                                                                | When                                                                                                                                   |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [playground-elements](https://github.com/google/playground-elements)   | multi-file samples, TypeScript compiled in the browser, bare `import`s resolved from npm. Costs a service worker and a few hundred KB. |
+| [Sandpack](https://sandpack.codesandbox.io/)                           | demoing React components rather than markup and CSS.                                                                                   |
+| [@mdjs/mdjs-preview](https://www.npmjs.com/package/@mdjs/mdjs-preview) | you are already on the mdjs/rocket toolchain and write demos as JS functions.                                                          |
+| StackBlitz / CodePen embeds                                            | the reader should be able to fork the sample and keep it.                                                                              |
+| [CodeMirror](https://codemirror.net/) / [Monaco](https://microsoft.github.io/monaco-editor/) | the code block should be a real editor — multi-cursor, linting, IntelliSense. See [Editing is asked for](#editing-is-asked-for-not-assumed) for what that costs a docs page. |
 
 ## Install
 
@@ -89,40 +149,6 @@ the docs around it, `@layer base` rules lose to the theme, and scoping the style
 under a wrapper selector takes `:root` with it and kills the custom properties. The
 frame is the isolation — and for a CSS library it is also the honest demo, a real
 page loading the real stylesheet.
-
-## Why this one
-
-Live-code components are not a new idea. What is specific here:
-
-**It wraps the code block you already have.** Every other tool in this space asks you
-to author demos in its own format — a JS function, a multi-file manifest, a custom
-fence. This takes the `<pre><code>` your site generator already emitted, hljs classes
-and all, and upgrades it in place. Nothing to port, and the page is a plain code block
-if the script never loads.
-
-**Emulated viewport widths.** `viewport-width` gives the frame a genuine CSS width and
-scales the result down to fit, so a sample's desktop media queries actually apply
-inside a 700px docs column. `viewport-widths` turns that into a row of buttons.
-
-**It lives in the light DOM.** The code block keeps the host page's syntax theme and
-prose styles instead of being sealed off from them by a shadow root, and the host
-page's `[data-theme]` is mirrored into the frame, so a demo goes dark with the docs
-around it. A tool that sandboxes its preview onto a separate origin structurally
-cannot do that second part.
-
-**Two script tags and no build step.** 7.5KB gzipped on a docs site that already ships
-highlight.js, 23KB standalone — see [Three builds](#three-builds). No service worker, no
-bundler config, no origin to serve demo files from.
-
-Reach for something else when the shape of the problem is different:
-
-| Instead                                                                | When                                                                                                                                   |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [playground-elements](https://github.com/google/playground-elements)   | multi-file samples, TypeScript compiled in the browser, bare `import`s resolved from npm. Costs a service worker and a few hundred KB. |
-| [Sandpack](https://sandpack.codesandbox.io/)                           | demoing React components rather than markup and CSS.                                                                                   |
-| [@mdjs/mdjs-preview](https://www.npmjs.com/package/@mdjs/mdjs-preview) | you are already on the mdjs/rocket toolchain and write demos as JS functions.                                                          |
-| StackBlitz / CodePen embeds                                            | the reader should be able to fork the sample and keep it.                                                                              |
-| [CodeMirror](https://codemirror.net/) / [Monaco](https://microsoft.github.io/monaco-editor/) | the code block should be a real editor — multi-cursor, linting, IntelliSense. See [Editing is asked for](#editing-is-asked-for-not-assumed) for what that costs a docs page. |
 
 ## Attributes
 

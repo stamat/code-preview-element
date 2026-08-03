@@ -78,6 +78,10 @@
     "in": "site",
     "out": "_site",
     "options": {
+      "//llms": "The index and the corpus. `full` is the one that earns its place here: this is a one-page site, so the link map is a single line — the page's own prose is what an assistant answering questions about the element needs.",
+      "llms": { "out": "llms.txt", "full": true },
+      "//sitemap": "Also what turns the llms files on: poops 2.0.0 collects page entries only when searchIndex, sitemap, nav or feed is set, and llms is not in that list — with llms alone nothing is written. A sitemap is worth having on a published page regardless, so it is the cheap way to satisfy it.",
+      "sitemap": "sitemap.xml",
       "site": {
         "title": "code-preview",
         "brand": "code-preview-element",

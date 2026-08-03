@@ -60,28 +60,36 @@ description: Live, editable HTML samples in an isolated iframe — the element d
     border: 1px solid var(--border);
     border-radius: var(--radius);
   }
-  .toc-disclosure > summary {
+  /* Shared with the FAQ at the bottom of the page, which is the same disclosure worn as a
+     run of rows: one flex line, the native marker dropped, a hover fill mixed out of
+     `currentcolor` so it follows the theme switch. Only where the caret sits differs. */
+  .toc-disclosure > summary,
+  .faq > details > summary {
     display: flex;
     gap: 0.5rem;
     align-items: center;
     padding: 0.75rem 1rem;
-    border-radius: var(--radius);
     cursor: pointer;
-    /* Sentence case at full strength, and under the body size. Three separate calls:
-       uppercase strips the word shapes readers scan by and is slower to read, which is a
-       cost worth paying for a sidebar's micro-label and not for a control; `--fg-muted`
-       on a thing you click reads as disabled, and the caret inherits it; and 0.875rem
-       keeps it below `h3`'s 1.2rem, so it never enters the article's heading scale. */
-    font-size: 0.875rem;
     font-weight: 600;
+    /* `--fg-muted` on a thing you click reads as disabled, and the caret inherits it. */
     color: var(--fg);
     list-style: none; /* drops the native marker everywhere... */
   }
-  .toc-disclosure > summary::-webkit-details-marker {
+  .toc-disclosure > summary::-webkit-details-marker,
+  .faq > details > summary::-webkit-details-marker {
     display: none; /* ...except Safari, which wants it said this way */
   }
-  .toc-disclosure > summary:hover {
+  .toc-disclosure > summary:hover,
+  .faq > details > summary:hover {
     background: color-mix(in srgb, currentcolor 5%, transparent);
+  }
+  .toc-disclosure > summary {
+    border-radius: var(--radius);
+    /* Sentence case at full strength, and under the body size. Two calls: uppercase strips
+       the word shapes readers scan by and is slower to read, which is a cost worth paying
+       for a sidebar's micro-label and not for a control; and 0.875rem keeps it below
+       `h3`'s 1.2rem, so it never enters the article's heading scale. */
+    font-size: 0.875rem;
   }
   /* The summary is only rounded where it is actually the box's edge: closed it is the
      whole box, open the list sits underneath and the bottom two corners square off. */
@@ -90,7 +98,8 @@ description: Live, editable HTML samples in an isolated iframe — the element d
     border-end-end-radius: 0;
   }
   /* A half turn rather than a quarter, so it reads the same either way round in RTL. */
-  .toc-disclosure > summary::before {
+  .toc-disclosure > summary::before,
+  .faq > details > summary::after {
     content: "";
     flex: none; /* the caret never squeezes */
     width: 1rem;
@@ -99,9 +108,11 @@ description: Live, editable HTML samples in an isolated iframe — the element d
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L8 8.94l3.72-3.72a.749.749 0 0 1 1.06 0Z'/%3E%3C/svg%3E") center / contain no-repeat;
     transition: rotate 250ms ease;
   }
-  .toc-disclosure[open] > summary::before { rotate: 180deg; }
+  .toc-disclosure[open] > summary::before,
+  .faq > details[open] > summary::after { rotate: 180deg; }
   @media (prefers-reduced-motion: reduce) {
-    .toc-disclosure > summary::before { transition: none; }
+    .toc-disclosure > summary::before,
+    .faq > details > summary::after { transition: none; }
   }
   /* No left rule on the list: the container's border already fences it off, and two
      lines around six links is one too many. The indent is the caret's width plus its
@@ -114,9 +125,44 @@ description: Live, editable HTML samples in an isolated iframe — the element d
      every other link in the article is the thing both Nielsen Norman and Canada.ca warn
      about — these are links, so they look like the page's links. Only the box matters. */
   .toc a { display: block; padding: 0.2rem 0; }
-  /* The filter emits this for H3s. None here yet — but without the rule the first one
-     added would be indistinguishable from an H2. */
+  /* The filter emits this for H3s. None here yet — the FAQ's questions are H3s, but the
+     filter keys on the heading's `id` and theirs is on the `<summary>` around it, so they
+     stay out. Without the rule the first one that did land would be indistinguishable
+     from an H2. */
   .toc .toc-h3 a { padding-left: 1rem; }
+
+  /* `<accordion-elemental class="grouped caret">`, ported: rows sharing one border, one
+     radius on the outer corners only, the caret trailing because a run of full-width
+     questions lines up at the far edge. Plain `<details>` rather than the element — this
+     page ships one script for the thing it documents and the browser already does the
+     rest: expanded state announced, Enter and Space handled, find-in-page and a `#faq-…`
+     link opening a closed one. What is lost by not loading it is the slide, which is
+     the one part of an accordion nothing native does yet. */
+  .faq {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  /* `:not(:first-of-type)` rather than `details + details`: markdown decides what lands
+     between two html runs, and adjacency is not worth betting a border on. */
+  .faq > details:not(:first-of-type) { border-top: 1px solid var(--border); }
+  /* The question is an H3 so a screen reader can skim the section by heading — the
+     summary is what carries the weight and the size, and the heading inside it brings
+     neither. */
+  .faq > details > summary > h3 {
+    margin: 0;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+  }
+  /* The answer is markdown, so it arrives as the article's own paragraphs and lists —
+     indented to the summary's text, and with the last child's bottom margin traded for
+     padding so it cannot collapse out through the row's edge. */
+  .faq > details > :not(summary) { padding-inline: 1rem; }
+  .faq > details > summary + * { margin-block-start: 0.25rem; }
+  .faq > details > :last-child {
+    margin-block-end: 0;
+    padding-block-end: 1rem;
+  }
 
   /* The readme's shields, same three and in the same order. A flex row rather than
      inline images, so the gap is a declaration instead of the whitespace between the
@@ -133,6 +179,10 @@ description: Live, editable HTML samples in an isolated iframe — the element d
   <a href="https://github.com/stamat/code-preview-element/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/stamat/code-preview-element/ci.yml?branch=main&amp;label=ci" alt="ci"></a>
   <a href="https://github.com/stamat/code-preview-element/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="license MIT"></a>
 </p>
+<p>A code block that renders itself: <code>&lt;code-preview&gt;</code> wraps a highlighted
+  <code>&lt;pre&gt;&lt;code&gt;</code> in a live preview — an iframe above the code, the code editable on
+  request, edits applied as you type. The sample is the only source of truth, so a documented
+  example and what it actually does cannot drift apart.</p>
 <p>Edit any sample below — the preview above it follows as you type. The theme switcher
   in the topbar drives this page and, wherever a sample passes
   <code>theme-attribute="data-theme"</code>, the frame with it.</p>
@@ -145,6 +195,55 @@ description: Live, editable HTML samples in an isolated iframe — the element d
    html, which the markdown heading renderer emits — one reason this page is markdown at
    all, since as html the H2s had to carry them by hand. #}
 {% set body %}
+
+## Features
+
+Live-code components are not a new idea. What is specific here:
+
+- **It wraps the code block you already have.** Every other tool in this space asks you to
+  author demos in its own format — a js function, a multi-file manifest, a custom fence.
+  This takes the `<pre><code>` your site generator already emitted, hljs classes and all,
+  and upgrades it in place. Nothing to port.
+- **Emulated viewport widths.** `viewport-width` gives the frame a genuine css width and
+  scales the result down to fit, so a sample's desktop media queries actually apply inside
+  a 700px docs column. `viewport-widths` turns that into a row of buttons.
+- **It lives in the light DOM.** The code block keeps this page's syntax theme and prose
+  styles instead of being sealed off from them by a shadow root, and the page's
+  `[data-theme]` is mirrored into the frame — so a demo goes dark with the docs around it.
+  A tool that sandboxes its preview onto a separate origin structurally cannot do that.
+- **Several fences, several tabs.** Markup, css and js written as the three blocks they
+  are become three panes, the language read off each fence. Nothing to configure.
+- **An options panel from a manifest you already ship.** The controls are generated from
+  `custom-elements.json` — the format the ecosystem has, not one invented here.
+- **A console strip under the block.** What the sample logs, and an uncaught throw,
+  land against the code that caused them rather than in a devtools panel.
+- **Editing is asked for, not assumed.** A block is a code block until you press Edit;
+  a page full of quietly editable blocks is a keyboard trap in the middle of the prose.
+- **Two script tags and no build step.** 7.5KB gzipped on a docs site that already ships
+  highlight.js, 23KB standalone. No service worker, no bundler config, no origin to serve
+  demo files from.
+
+## Intended use
+
+Documentation for something you can demonstrate in markup — a css library, a custom
+element, anything whose api is an attribute and a class name. The sample is the
+`<pre><code>` your site generator already emitted, and the preview above it is that exact
+text rendered, so the example on the page and the thing it documents cannot drift apart.
+Everything below this section is that arrangement, on the page it documents.
+
+It assumes the code is yours. The frame is a `srcdoc` document with no `sandbox`, which is
+what buys the height measurement and the theme write — it is also same-origin, so a sample
+can reach the page around it. That is the right trade for prose you wrote plus edits a
+reader types into their own browser: the worst case is a reader XSSing themselves, and
+nothing is stored or shared. It is the wrong one for a playground whose samples arrive in
+a url, which is somebody else's script running on your origin.
+
+And demo code is never built — it goes into the frame verbatim. No TypeScript, no JSX, no
+bare `import`s resolved from npm, no fork-and-keep. When the sample needs any of those,
+the tool for it is [playground-elements](https://github.com/google/playground-elements),
+[Sandpack](https://sandpack.codesandbox.io/) or a StackBlitz embed; the
+[readme](https://github.com/stamat/code-preview-element#intended-use) has the whole table
+of when to reach for which.
 
 ## A sample with no assets
 
@@ -355,6 +454,86 @@ out rather than shown as black.
 ```
 
 </code-preview>
+
+## Questions
+
+<div class="faq">
+<details>
+<summary id="faq-build-step"><h3>Is there a build step?</h3></summary>
+
+No. A stylesheet and a script, and any `<pre><code>` you wrap is live — this page is two
+`<script>` tags and a `<link>`. A block your generator already highlighted is left exactly
+as it is, so nothing reshuffles on load.
+
+</details>
+<details>
+<summary id="faq-iframe"><h3>Why an iframe, and not the markup inlined into the page?</h3></summary>
+
+Because a docs page cannot host a sample of a css library safely: tag-level rules for
+`html`, `body` or `*` restyle the docs around it, `@layer base` rules lose to the theme,
+and scoping the stylesheet under a wrapper selector takes `:root` with it and kills the
+custom properties. The frame is the isolation — and for a css library it is also the
+honest demo, a real page loading the real stylesheet.
+
+</details>
+<details>
+<summary id="faq-js-waits"><h3>Why does a js edit wait for Run when css applies as I type?</h3></summary>
+
+Because no delay makes running half-typed code safe. The frame is same-origin, so it
+shares this page's event loop: `while (true` with the closing paren still to come hangs
+the whole tab, not just the preview. A longer debounce would not prevent that, it would
+only decide how long you get first. Markup and css are inert, so they have no such line to
+cross. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> and closing the editor are the
+other two ways to apply a js edit.
+
+</details>
+<details>
+<summary id="faq-highlighter"><h3>Can I use Prism, Shiki or my own highlighter?</h3></summary>
+
+Yes. The default build asks the page's `window.hljs` for one method, so anything of that
+shape stands in, as long as it is in place before the element registers:
+
+```js
+window.hljs = {
+  highlightElement(element) {
+    /* recolor it, leave textContent alone */
+  },
+};
+```
+
+The block arrives carrying `class="hljs language-<lang>"` and the sample is its
+`textContent` — a highlighter that rewrites that text breaks the preview it feeds.
+
+</details>
+<details>
+<summary id="faq-no-js"><h3>What does a reader with no JavaScript see?</h3></summary>
+
+The code block, highlighted, exactly as the page shipped it. The preview is an
+enhancement over markup that stands on its own, which is the other half of why the sample
+is a `<pre><code>` rather than a string in a config file.
+
+</details>
+<details>
+<summary id="faq-height"><h3>Why does every sample here carry its own <code>--code-preview-height</code>?</h3></summary>
+
+A preview's real height is its sample's, and nothing knows that until the frame has
+rendered — so space is reserved before either happens, and the stylesheet's `8rem` default
+is a guess. Measured once per sample, it is not a guess: on this page that is the
+difference between a CLS of `0.0285` and `0.0022`. `no-shrink` covers the other direction,
+a late re-measure that comes back shorter.
+
+</details>
+<details>
+<summary id="faq-frameworks"><h3>Can it preview a React or TypeScript component?</h3></summary>
+
+No — demo code goes into the frame verbatim, so there is no compile step to turn JSX or
+types into something a browser runs, and no resolver for a bare `import`. A component
+already built to a bundle you can point `js` at is a different question, and that one
+works: it is markup and a script, which is all this element ever handles. See
+[Intended use](#intended-use).
+
+</details>
+</div>
 {% endset %}
 {# The filter emits a bare `<nav><ul>`, so the disclosure is wrapped around it here
    rather than asked of it. `open`, because on a page this short the list is the point —
