@@ -16,6 +16,8 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-08-17
+
 ### Fixed
 
 - **The console no longer opens a seam under the code block.** The strip took `0.25rem`
