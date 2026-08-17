@@ -118,6 +118,42 @@ code-preview:not(:defined)[tab="options"]::before {
   );
 }
 
+/* Upgrading swaps the reservation above for the real boxes, and two of them are not there
+   yet at that moment — measured on a consumer's docs at 224ms upgrade, 274ms arrival, a
+   layout shift each way. These three rules carry the reservation across the gap, so the
+   swap is a no-op instead of a dip and a push.
+
+   The code strip waits on the manifest fetch: the tablist appears with the second pane,
+   and with `manifest` the second pane is the options panel. Until the tablist exists the
+   strip's row is held as top margin on the first pane — the exact place the strip will
+   stand. Held forever on a page that names a `manifest` and never loads the options
+   bundle, which is the misconfiguration this mirrors rather than a case it can detect. */
+code-preview:defined[manifest]:not([tab="options"]):not(:has(.code-preview-tabs)) > :is(.code-preview-viewport, .code-preview-bar) + :is(pre, .code-wrap) {
+  margin-block-start: var(--code-preview-bar-height, 2.25rem);
+}
+
+/* Under `tab="options"` the code block is hidden from the start and the panel is what
+   takes its place — so until the panel exists there is nothing between the preview and
+   the page below it, and everything under the element rises by a strip and a panel and
+   comes back down when they land. `::after` because the panel is appended last, so the
+   held box stands where the real one will. */
+code-preview:defined[tab="options"]:not(:has(> .code-preview-options))::after {
+  content: "";
+  display: block;
+  height: calc(var(--code-preview-bar-height, 2.25rem) + var(--code-preview-options-height, 12rem));
+}
+
+/* The editor pads its block for the hint and the buttons the moment it attaches — see
+   `--code-preview-hint-space` below — which grows the block at upgrade by the difference
+   to the host's own `pre` padding. Worn from the start instead, so the block is born the
+   size the editor will make it. `[no-edit]` on the element is the one read-only spelling
+   knowable before upgrade; a pane read-only by fence word or by pane type wears the
+   padding for the wait and gives it back, which is the smaller wrong way round. */
+code-preview:not(:defined):not([no-edit]) > pre,
+code-preview:not(:defined):not([no-edit]) > .code-wrap > pre {
+  padding-block-end: var(--code-preview-hint-space, 2.25rem);
+}
+
 /* The bar above the preview: the tab strip on the left, the width buttons on the right,
    either one alone, or both. It takes over the top border and corners so the whole thing
    stays one object. */
@@ -161,12 +197,14 @@ code-preview .code-preview-viewport + .code-preview-bar {
 
    Bottom of the stack, so it takes the corners the code block would otherwise own, and no
    top border — the block above brings its own, and two adjacent 1px lines read as one
-   thick misaligned one. */
+   thick misaligned one. The padding is asymmetric for that same reason and not by oversight:
+   the two boxes are meant to read as one, and space above the first line opens a seam at
+   exactly the join that is supposed to be invisible. */
 code-preview .code-preview-console {
   box-sizing: border-box;
   max-block-size: var(--code-preview-console-height, 10rem);
   margin: 0;
-  padding: 0.25rem 0;
+  padding: 0 0 0.25rem;
   overflow-y: auto;
   border: 1px solid var(--code-preview-border, var(--border, #d8d8d8));
   border-top: 0;

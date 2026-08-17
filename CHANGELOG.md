@@ -16,6 +16,31 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The console no longer opens a seam under the code block.** The strip took `0.25rem`
+  of padding on all four sides, and the top quarter of that landed exactly on the join
+  the 3.0.0 layout works to hide — no top border, shared corners, two boxes meant to read
+  as one — so a gap appeared right where the block was supposed to run into the strip. It
+  is `padding: 0 0 0.25rem` now; the space below the last line stays.
+
+  **CSS an author may be targeting:** `code-preview .code-preview-console`. A sheet that
+  restores symmetric padding gets the seam back. The asymmetry is now stated in the
+  comment above the rule so it does not read as an oversight worth tidying.
+
+- **Upgrading no longer shifts the page twice while the manifest loads.** The pre-upgrade
+  reservation counted the code strip and the options panel, then upgrade dropped it whole
+  — but with `manifest` both boxes wait on a fetch, so the page rose by their height and
+  came back down when they landed. Measured on a consumer's docs: upgrade at 224ms,
+  arrival at 274ms, a layout shift each way, on every load. Three CSS rules now carry the
+  reservation across the gap: the strip's row is held as top margin on the first pane
+  until the tablist exists, the `tab="options"` panel's box is held by an `::after` until
+  the panel exists, and an editable block wears `--code-preview-hint-space` from the
+  start instead of growing by it when the editor attaches. The costs run the honest way:
+  a page that names a `manifest` and never loads the options bundle keeps the held strip
+  row for good, and a pane read-only by fence word wears the editor padding for the wait
+  and gives it back.
+
 ## [3.0.0] - 2026-08-03
 
 ### Changed
