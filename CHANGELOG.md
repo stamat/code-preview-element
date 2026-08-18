@@ -16,6 +16,8 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-08-18
+
 ### Fixed
 
 - **A long sample line no longer reflows the block at upgrade.** CodeJar writes
