@@ -16,6 +16,21 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A long sample line no longer reflows the block at upgrade.** CodeJar writes
+  `white-space: pre-wrap` and `overflow-wrap: break-word` inline on the block it takes
+  over, so a sample whose longest line overflowed the column scrolled sideways before
+  upgrade and wrapped after it — one extra visual line per overflowing line, a layout
+  shift the height reservation could not see coming. Editable blocks now wear both from
+  the start, the same treatment 3.0.1 gave the editor's padding. Same honest edge too: a
+  pane read-only by fence word or pane type wraps for the wait and unwraps when the
+  editor declines it. The sibling-pane hide crosses the same line now — keyed off
+  `.is-tabbed` instead of `:defined`, so the later fences cannot stand on the page for
+  the one frame between upgrade and the tab strip's collapse taking over. A stray
+  non-fence `<pre>` inside the element stays hidden for good where it used to reappear
+  at upgrade; the panes contract never included one.
+
 ## [3.0.1] - 2026-08-17
 
 ### Fixed

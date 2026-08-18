@@ -81,8 +81,14 @@ code-preview:not(:defined)[tab="options"] > :is(pre, .code-wrap) {
 /* A sample written as several fences — markup, then its css, then its js — is several
    blocks in the markup and one tab each after the upgrade. Until then only the first is
    the sample: the rest are the panes nobody has switched to yet, and stacking all three
-   is a page that jumps by two code blocks the moment the element defines. */
-code-preview:not(:defined) > :is(pre, .code-wrap) ~ :is(pre, .code-wrap) {
+   is a page that jumps by two code blocks the moment the element defines.
+
+   `:not(.is-tabbed)` and not `:not(:defined)`: the collapse that takes over is keyed off
+   `.is-tabbed`, and between `:defined` and that class there is a style-recalc gap where
+   the later panes would stand on the page for a frame. The cost is a stray non-fence
+   `<pre>` authored inside the element, which now stays hidden instead of reappearing at
+   upgrade — a shape the panes contract never included. */
+code-preview:not(.is-tabbed) > :is(pre, .code-wrap) ~ :is(pre, .code-wrap) {
   display: none;
 }
 
@@ -143,15 +149,26 @@ code-preview:defined[tab="options"]:not(:has(> .code-preview-options))::after {
   height: calc(var(--code-preview-bar-height, 2.25rem) + var(--code-preview-options-height, 12rem));
 }
 
-/* The editor pads its block for the hint and the buttons the moment it attaches — see
-   `--code-preview-hint-space` below — which grows the block at upgrade by the difference
-   to the host's own `pre` padding. Worn from the start instead, so the block is born the
-   size the editor will make it. `[no-edit]` on the element is the one read-only spelling
-   knowable before upgrade; a pane read-only by fence word or by pane type wears the
-   padding for the wait and gives it back, which is the smaller wrong way round. */
-code-preview:not(:defined):not([no-edit]) > pre,
-code-preview:not(:defined):not([no-edit]) > .code-wrap > pre {
+/* The editor restyles its block the moment it attaches, and both writes land as a reflow
+   on every load unless the block is born wearing them. The padding is
+   `--code-preview-hint-space` (see below), which grows the block by the difference to the
+   host's own `pre` padding. The wrap is CodeJar's: it writes `white-space: pre-wrap` and
+   `overflow-wrap: break-word` inline on the block, so a sample whose longest line
+   overflows the column gains a visual line per overflowing line at upgrade — a shift the
+   height reservation cannot see coming.
+
+   `[no-edit]` on the element or the `<pre>`, and the fence word's class on the block, are
+   the read-only spellings knowable before upgrade; a pane read-only by pane type wears
+   both for the wait and gives them back, which is the smaller wrong way round. */
+code-preview:not(:defined):not([no-edit]) > pre:not([no-edit]),
+code-preview:not(:defined):not([no-edit]) > .code-wrap > pre:not([no-edit]) {
   padding-block-end: var(--code-preview-hint-space, 2.25rem);
+}
+
+code-preview:not(:defined):not([no-edit]) > pre:not([no-edit]) > code:not(.no-edit),
+code-preview:not(:defined):not([no-edit]) > .code-wrap > pre:not([no-edit]) > code:not(.no-edit) {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 /* The bar above the preview: the tab strip on the left, the width buttons on the right,
