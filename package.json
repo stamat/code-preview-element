@@ -1,6 +1,6 @@
 {
   "name": "code-preview-element",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "A code block that renders itself: live, editable HTML samples in an isolated iframe.",
   "type": "module",
   "main": "dist/code-preview.js",
