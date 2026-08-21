@@ -16,6 +16,12 @@ shows up in a function signature.
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-08-21
+
+### Changed
+
+- **Returned padding top and bottom to the console section**
+
 ## [3.0.2] - 2026-08-18
 
 ### Fixed
@@ -111,7 +117,7 @@ shows up in a function signature.
   the resize report that write fired triggered the next measure, so the two heights took
   turns indefinitely. Two defenses, either sufficient: a height-only resize report from
   the wrapper is now recognized as our own write coming back and does not re-measure
-  (the wrapper is watched for its *width*, which is what an emulated viewport scales
+  (the wrapper is watched for its _width_, which is what an emulated viewport scales
   against), and the frame height write carries one pixel of dead-band — a real change is
   bigger, and a preview one pixel short is invisible where a vibrating one is not.
   Chrome and Firefox quantized the two measurements identically and never flapped;
@@ -195,17 +201,19 @@ shows up in a function signature.
   ```
 
   ```html
-  <pre no-edit><code class="language-css">.drawer { transition: transform 0.2s; }</code></pre>
+  <pre
+    no-edit
+  ><code class="language-css">.drawer { transition: transform 0.2s; }</code></pre>
   ```
 
   Panes are named by what their tab says (`html`, `css`, `js`) or by the pane's own name
   (`code` for the markup one). In markdown the per-fence form needs no new vocabulary if
-  your generator turns a bare word in the info string into a class on the block — ```` ```css
-  no-edit ```` — since that class is what the element reads. Bare `no-edit` is unchanged:
+  your generator turns a bare word in the info string into a class on the block — ` ```css
+no-edit ` — since that class is what the element reads. Bare `no-edit` is unchanged:
   the whole sample stays read-only.
 
   **CSS an author may be targeting:** `code-preview.is-code-pane` now means the pane
-  showing has an *editor* in it, not merely code — a pane locked by either form no longer
+  showing has an _editor_ in it, not merely code — a pane locked by either form no longer
   gets the class, so the buttons and the keyboard hint are not left on a block nobody can
   type into.
   Unchanged for a sample that locks nothing.
@@ -301,7 +309,7 @@ shows up in a function signature.
   half-typed js, `while (true` with the closing paren still to come, hangs the whole tab
   and not just the preview. A longer debounce only decides how long the reader gets first.
 
-  A sample that runs js it is *not* typing — a `js` asset, the `reload` attribute — still
+  A sample that runs js it is _not_ typing — a `js` asset, the `reload` attribute — still
   follows the typing: the rebuild re-runs that js from its own file, complete and valid,
   never mid-statement. What the rebuild costs is the sample's live state, which is the
   price of a preview that moves while the reader types markup; where nothing ran at all,
@@ -330,7 +338,7 @@ shows up in a function signature.
   **CSS an author may be targeting:** editable blocks gained
   `aria-keyshortcuts="Escape Control+Enter Meta+Enter"`, where it was `Escape` alone.
   `.is-js-pane` now means "the pane showing is one whose edits wait on Run" — the js tab,
-  or a single fence carrying its own `<script>` — and is what *shows* the Run button;
+  or a single fence carrying its own `<script>` — and is what _shows_ the Run button;
   without it the button is `display: none`. The accent rules on
   `.is-js-pane .code-preview-run` are gone.
 
